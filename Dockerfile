@@ -1,4 +1,4 @@
-FROM python:3.13-alpine as build
+FROM python:3.13-alpine AS build
 
 WORKDIR /app
 VOLUME [ "/data" ]
