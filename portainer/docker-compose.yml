@@ -1,0 +1,11 @@
+version: "3"
+services:
+  dataloader:
+    image: ghcr.io/tn8or/skoda:main
+    restart: always
+
+    secrets:
+      - SKODA_USER
+      - SKODA_PASS
+      - SKODA_AUTH
+      - SKODA_VEHICLE
