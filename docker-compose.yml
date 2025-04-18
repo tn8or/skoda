@@ -1,14 +1,11 @@
 services:
   app:
     build: .
-    container_name: getChargePrices
-    entrypoint: sh /app/launch-dev.sh
-    environment:
-      - APPLICATIONINSIGHTS_CONNECTION_STRING=${APPLICATIONINSIGHTS_CONNECTION_STRING}
+    container_name: skodaImporter
+    entrypoint: uvicorn main:app --host 0.0.0.0 --port 80 --reload --reload-exclude *tmp
     restart: always
     ports:
-      - 8000:80
-      - 16379:6379
+      - 80:80
     volumes:
       - .:/app
     secrets:
@@ -16,7 +13,6 @@ services:
       - SKODA_PASS
       - SKODA_AUTH
       - SKODA_VEHICLE
-
 
 secrets:
   SKODA_USER:
