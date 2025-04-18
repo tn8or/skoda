@@ -11,15 +11,9 @@ services:
     secrets:
       - SKODA_USER
       - SKODA_PASS
-      - SKODA_AUTH
-      - SKODA_VEHICLE
 
 secrets:
   SKODA_USER:
     file: ./secrets/SKODA_USER
   SKODA_PASS:
     file: ./secrets/SKODA_PASS
-  SKODA_VEHICLE:
-    file: ./secrets/SKODA_VEHICLE
-  SKODA_AUTH:
-    file: ./secrets/SKODA_AUTH

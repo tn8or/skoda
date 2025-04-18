@@ -7,5 +7,9 @@ services:
     secrets:
       - SKODA_USER
       - SKODA_PASS
-      - SKODA_AUTH
-      - SKODA_VEHICLE
+
+secrets:
+  SKODA_USER:
+    external: true
+  SKODA_PASS:
+    external: true
