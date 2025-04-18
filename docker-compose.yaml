@@ -1,0 +1,29 @@
+services:
+  app:
+    build: .
+    container_name: getChargePrices
+    entrypoint: sh /app/launch-dev.sh
+    environment:
+      - APPLICATIONINSIGHTS_CONNECTION_STRING=${APPLICATIONINSIGHTS_CONNECTION_STRING}
+    restart: always
+    ports:
+      - 8000:80
+      - 16379:6379
+    volumes:
+      - .:/app
+    secrets:
+      - SKODA_USER
+      - SKODA_PASS
+      - SKODA_AUTH
+      - SKODA_VEHICLE
+
+
+secrets:
+  SKODA_USER:
+    file: ./secrets/SKODA_USER
+  SKODA_PASS:
+    file: ./secrets/SKODA_PASS
+  SKODA_VEHICLE:
+    file: ./secrets/SKODA_VEHICLE
+  SKODA_AUTH:
+    file: ./secrets/SKODA_AUTH
