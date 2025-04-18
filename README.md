@@ -25,17 +25,17 @@ This project is designed to subscribe to the MySkoda service and offload relevan
 
 2. Create a virtual environment and activate it:
    ```bash
-python -m venv .venv
-source .venv/bin/activate
+   python -m venv .venv
+   source .venv/bin/activate
 
 4. Install dependencies:
    ```bash
-pip install -r requirements.txt
+   pip install -r requirements.txt
 
 5. Set up your environment variables: Create a .env file or use your preferred method to set the following environment variables:
    ```bash
-SKODA_USER=<your-myskoda-username>
-SKODA_PASS=<your-myskoda-password>
+   SKODA_USER=<your-myskoda-username>
+   SKODA_PASS=<your-myskoda-password>
 
 6. Ensure your Graylog server is running and accessible.
 
@@ -44,7 +44,7 @@ SKODA_PASS=<your-myskoda-password>
 
 2. Access the FastAPI endpoint to view the last 30 lines of the application log:
    ```bash
-GET http://localhost:8000/
+   GET http://localhost:8000/
 
 3. Monitor your Graylog server for incoming logs.
 
@@ -74,11 +74,11 @@ A GitHub Actions workflow (ghcr-image.yml) is included to build and push a Docke
 Build the Docker image locally:
    ```bash
    docker build -t skoda-data-logger .
-
+   ```
 Run the container:
    ```bash
    docker run -d -p 8000:8000 --env SKODA_USER=<your-username> --env SKODA_PASS=<your-password> skoda-data-logger
-
+   ```
 CI/CD with GitHub Actions
 The ghcr-image.yml workflow automates the process of building and pushing the Docker image to GHCR. It also invokes a deployment webhook after the image is pushed.
 
