@@ -39,7 +39,7 @@ This project is designed to subscribe to the MySkoda service and offload relevan
 
 6. Ensure your Graylog server is running and accessible.
 
-##Usage
+## Usage
 1. Start the application:
 
 2. Access the FastAPI endpoint to view the last 30 lines of the application log:
@@ -48,7 +48,8 @@ This project is designed to subscribe to the MySkoda service and offload relevan
 
 3. Monitor your Graylog server for incoming logs.
 
-##Project Structure
+## Project Structure
+```
 .
 ├── [main.py](http://_vscodecontentref_/1)                 # Main application logic
 ├── [requirements.txt](http://_vscodecontentref_/2)        # Python dependencies
@@ -56,14 +57,14 @@ This project is designed to subscribe to the MySkoda service and offload relevan
 │   └── ghcr-image.yml      # Workflow to build and push Docker images
 ├── README.md               # Project documentation
 └── [app.log](http://_vscodecontentref_/3)                 # Application log file (generated at runtime)
-
-##Logging
+```
+## Logging
 The application logs data to:
 
 Graylog: Logs are sent to a local Graylog server using the graypy library.
 File: Logs are also saved to app.log for local debugging.
 
-##FastAPI Endpoint
+## FastAPI Endpoint
 The application exposes a single endpoint:
 
 GET /: Returns the last 30 lines of the app.log file.
@@ -82,7 +83,7 @@ Run the container:
 CI/CD with GitHub Actions
 The ghcr-image.yml workflow automates the process of building and pushing the Docker image to GHCR. It also invokes a deployment webhook after the image is pushed.
 
-##Future Plans
+## Future Plans
 Database Integration: Save charging data into a database to calculate running costs.
 Enhanced Analytics: Provide insights into vehicle usage and efficiency.
 
