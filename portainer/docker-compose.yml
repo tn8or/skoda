@@ -10,7 +10,7 @@ services:
       - SKODA_PASS
 
     networks:
-      - bridge
+      - servicenet
 
 secrets:
   SKODA_USER:
@@ -19,5 +19,5 @@ secrets:
     external: true
 
 networks:
-  bridge:
+  servicenet:
     external: true
