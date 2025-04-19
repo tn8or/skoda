@@ -8,8 +8,15 @@ services:
       - SKODA_USER
       - SKODA_PASS
 
+    networks:
+      - bridge
+
 secrets:
   SKODA_USER:
     external: true
   SKODA_PASS:
+    external: true
+
+networks:
+  bridge:
     external: true
