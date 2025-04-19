@@ -24,27 +24,32 @@ This project is designed to subscribe to the MySkoda service and offload relevan
    cd skoda-data-logger
 
 2. Create a virtual environment and activate it:
-python -m venv .venv
-source .venv/bin/activate
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
 
-3. Install dependencies:
-pip install -r requirements.txt
+4. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
 
-4. Set up your environment variables: Create a .env file or use your preferred method to set the following environment variables:
-SKODA_USER=<your-myskoda-username>
-SKODA_PASS=<your-myskoda-password>
+5. Set up your environment variables: Create a .env file or use your preferred method to set the following environment variables:
+   ```bash
+   SKODA_USER=<your-myskoda-username>
+   SKODA_PASS=<your-myskoda-password>
 
-5. Ensure your Graylog server is running and accessible.
+6. Ensure your Graylog server is running and accessible.
 
-Usage
+## Usage
 1. Start the application:
 
 2. Access the FastAPI endpoint to view the last 30 lines of the application log:
-GET http://localhost:8000/
+   ```bash
+   GET http://localhost:8000/
 
 3. Monitor your Graylog server for incoming logs.
 
-Project Structure
+## Project Structure
+```
 .
 ├── [main.py](http://_vscodecontentref_/1)                 # Main application logic
 ├── [requirements.txt](http://_vscodecontentref_/2)        # Python dependencies
@@ -52,13 +57,14 @@ Project Structure
 │   └── ghcr-image.yml      # Workflow to build and push Docker images
 ├── README.md               # Project documentation
 └── [app.log](http://_vscodecontentref_/3)                 # Application log file (generated at runtime)
-
-Logging
+```
+## Logging
 The application logs data to:
 
 Graylog: Logs are sent to a local Graylog server using the graypy library.
 File: Logs are also saved to app.log for local debugging.
-FastAPI Endpoint
+
+## FastAPI Endpoint
 The application exposes a single endpoint:
 
 GET /: Returns the last 30 lines of the app.log file.
@@ -67,16 +73,20 @@ Docker
 A GitHub Actions workflow (ghcr-image.yml) is included to build and push a Docker image to GitHub Container Registry (GHCR). To deploy using Docker:
 
 Build the Docker image locally:
-
+   ```bash
+   docker build -t skoda-data-logger .
+   ```
 Run the container:
-
+   ```bash
+   docker run -d -p 8000:8000 --env SKODA_USER=<your-username> --env SKODA_PASS=<your-password> skoda-data-logger
+   ```
 CI/CD with GitHub Actions
 The ghcr-image.yml workflow automates the process of building and pushing the Docker image to GHCR. It also invokes a deployment webhook after the image is pushed.
 
-Future Plans
+## Future Plans
 Database Integration: Save charging data into a database to calculate running costs.
 Enhanced Analytics: Provide insights into vehicle usage and efficiency.
-Multi-Vehicle Support: Extend support for multiple vehicles under the same MySkoda account.
+
 Contributing
 Contributions are welcome! Please open an issue or submit a pull request for any improvements or bug fixes.
 
