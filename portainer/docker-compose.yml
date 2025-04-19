@@ -3,6 +3,7 @@ services:
   dataloader:
     image: ghcr.io/tn8or/skoda:main
     restart: always
+    hostname: skodaimporter
 
     secrets:
       - SKODA_USER
