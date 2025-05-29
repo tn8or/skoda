@@ -51,8 +51,7 @@ except mariadb.Error as e:
     import os
     import signal
 
-#    os.kill(os.getpid(), signal.SIGINT)
-time.sleep(300)
+    os.kill(os.getpid(), signal.SIGINT)
 
 cur = conn.cursor()
 
@@ -70,8 +69,7 @@ async def save_log_to_db(log_message):
         import os
         import signal
 
-
-#        os.kill(os.getpid(), signal.SIGINT)
+        os.kill(os.getpid(), signal.SIGINT)
 
 
 async def on_event(event: Event):
