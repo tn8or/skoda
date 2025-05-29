@@ -1,9 +1,5 @@
-import logging
 import os
 
-
-
-## secret paths
 SECRET_PATHS = [
     "/etc/secrets/tronity",
     "/etc/secrets/redis",

@@ -1,8 +1,9 @@
 import asyncio
 import json
 import logging
+import os
 
-import graypy
+import mariadb
 from aiohttp import ClientSession
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.responses import PlainTextResponse
@@ -18,10 +19,6 @@ from commons import load_secret
 VIN = ""
 my_logger = logging.getLogger("skodaimportlogger")
 my_logger.setLevel(logging.DEBUG)
-handler = graypy.GELFUDPHandler(
-    "192.168.50.2", 12201
-)  # Replace 'localhost' with your Graylog server address
-my_logger.addHandler(handler)
 
 file_handler = logging.FileHandler("app.log")
 file_handler.setLevel(logging.DEBUG)
@@ -33,32 +30,79 @@ file_handler.setFormatter(formatter)
 # Add the handler to the logger
 my_logger.addHandler(file_handler)
 
-my_logger.warn("Starting the application...")
+my_logger.warning("Starting the application...")
+
+try:
+    my_logger.debug("Connecting to MariaDB...")
+    conn = mariadb.connect(
+        user=load_secret("MARIADB_USERNAME"),
+        password=load_secret("MARIADB_PASSWORD"),
+        host=load_secret("MARIADB_HOSTNAME"),
+        port=3306,
+        database=load_secret("MARIADB_DATABASE"),
+    )
+    conn.auto_reconnect = True
+    my_logger.debug("Connected to MariaDB")
+
+except mariadb.Error as e:
+    my_logger.error(f"Error connecting to MariaDB Platform: {e}")
+    print(f"Error connecting to MariaDB Platform: {e}")
+    import os
+    import signal
+
+    os.kill(os.getpid(), signal.SIGINT)
+
+
+cur = conn.cursor()
+
+
+async def save_log_to_db(log_message):
+    try:
+        cur.execute(
+            "INSERT INTO rawlogs (log_message, log_timestamp) VALUES (?, NOW())",
+            (log_message,),
+        )
+        conn.commit()
+    except mariadb.Error as e:
+        my_logger.error(f"Error saving log to database: {e}")
+        conn.rollback()
+        import os
+        import signal
+
+        os.kill(os.getpid(), signal.SIGINT)
 
 
 async def on_event(event: Event):
     # Convert the event to a JSON string
     event_json = json.dumps(event, default=str)
     my_logger.debug(event_json)
+    await save_log_to_db(event_json)
     print(event)
     if event.type == EventType.SERVICE_EVENT:
         my_logger.debug("Received service event.")
+        await save_log_to_db("Received service event.")
         if event.topic == ServiceEventTopic.CHARGING:
             my_logger.debug("Battery is %s%% charged.", event.event.data.soc)
+            await save_log_to_db(f"Battery is {event.event.data.soc}% charged.")
             await get_skoda_update(VIN)
 
 
 async def get_skoda_update(vin):
     my_logger.debug("Fetching vehicle health...")
+    await save_log_to_db("Fetching vehicle health...")
     health: Health = await myskoda.get_health(vin)
     my_logger.debug("Vehicle health fetched.")
+    await save_log_to_db(f"Vehicle health fetched, mileage: {health.mileage_in_km}")
     my_logger.debug("Mileage: %s", health.mileage_in_km)
     info = await myskoda.get_info(vin)
+    await save_log_to_db(f"Vehicle info fetched: {info}")
     my_logger.debug("Vehicle info fetched.")
     my_logger.debug(info)
     status: Status = await myskoda.get_status(vin)
     my_logger.debug("Vehicle status fetched.")
     my_logger.debug(status)
+    await save_log_to_db(f"Vehicle status fetched: {status}")
+    my_logger.debug("Vehicle status fetched.")
     my_logger.debug("looking for positions...")
     pos = next(
         pos
@@ -69,6 +113,9 @@ async def get_skoda_update(vin):
         "lat: %s, lng: %s", pos.gps_coordinates.latitude, pos.gps_coordinates.longitude
     )
     my_logger.debug("Vehicle positions fetched.")
+    await save_log_to_db(
+        f"Vehicle positions fetched: lat: {pos.gps_coordinates.latitude}, lng: {pos.gps_coordinates.longitude}"
+    )
 
 
 async def skodarunner():

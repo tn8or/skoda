@@ -5,19 +5,8 @@ services:
     restart: always
     hostname: skodaimporter
 
-    secrets:
-      - SKODA_USER
-      - SKODA_PASS
-
-    networks:
-      - servicenet
-
 secrets:
   SKODA_USER:
     external: true
   SKODA_PASS:
-    external: true
-
-networks:
-  servicenet:
     external: true
