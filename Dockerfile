@@ -19,4 +19,4 @@ RUN . /opt/venv/bin/activate && pip install --no-cache-dir --upgrade -r ./requir
 COPY . /app
 
 ENTRYPOINT  ["uvicorn","main:app","--host","0.0.0.0","--port","80"]
-HEALTHCHECK --interval=30s --timeout=3s --retries=1 --start-period=5s --start-interval=5s CMD curl --fail http://localhost:80 || exit 1
+#HEALTHCHECK --interval=30s --timeout=3s --retries=1 --start-period=5s --start-interval=5s CMD curl --fail http://localhost:80 || exit 1

@@ -4,9 +4,3 @@ services:
     image: ghcr.io/tn8or/skoda:main
     restart: always
     hostname: skodaimporter
-
-secrets:
-  SKODA_USER:
-    external: true
-  SKODA_PASS:
-    external: true
