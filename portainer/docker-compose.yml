@@ -4,3 +4,11 @@ services:
     image: ghcr.io/tn8or/skoda:main
     restart: always
     hostname: skodaimporter
+
+  environment:
+    SKODA_USER: ${SKODA_USER}
+    SKODA_PASS: ${SKODA_PASS}
+    MARIADB_DATABASE: ${MARIADB_DATABASE}
+    MARIADB_USERNAME: ${MARIADB_USERNAME}
+    MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+    MARIADB_HOSTNAME: ${MARIADB_HOSTNAME}
