@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 
 import mariadb
 from aiohttp import ClientSession
@@ -51,7 +52,7 @@ except mariadb.Error as e:
     import signal
 
 #    os.kill(os.getpid(), signal.SIGINT)
-
+time.sleep(300)
 
 cur = conn.cursor()
 
