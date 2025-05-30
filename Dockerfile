@@ -20,7 +20,7 @@ FROM python:3.13-alpine AS final
 ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 WORKDIR /app
-RUN apk add --no-cache mariadb-connector-c
+RUN apk add --no-cache mariadb-connector-c curl
 
 COPY . /app
 COPY --from=build /opt /opt
