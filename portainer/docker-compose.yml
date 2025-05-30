@@ -4,6 +4,8 @@ services:
     image: ghcr.io/tn8or/skoda:main
     restart: always
     hostname: skodaimporter
+    ports:
+      - "2380:80"
     environment:
       SKODA_USER: ${SKODA_USER}
       SKODA_PASS: ${SKODA_PASS}

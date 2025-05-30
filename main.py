@@ -158,8 +158,23 @@ app = FastAPI()
 
 @app.get("/")
 async def root():
-    last_25_lines = read_last_n_lines("app.log", 30)
+    last_25_lines = read_last_n_lines("app.log", 15)
     last_25_lines_joined = "".join(last_25_lines)
+    try:
+        cur.execute("SELECT COUNT(*) FROM skoda.rawlogs")
+        count = cur.fetchone()[0]
+        last_25_lines_joined += f"\n\nTotal logs in database: {count}\n"
+        cur.execute("SELECT * FROM skoda.rawlogs order by log_timestamp desc limit 10")
+    except mariadb.Error as e:
+        my_logger.error(f"Error fetching from database: {e}")
+        conn.rollback()
+        import os
+        import signal
+
+        os.kill(os.getpid(), signal.SIGINT)
+    for log_timestamp, log_message in cur:
+        last_25_lines_joined += f"{log_timestamp} - {log_message}\n"
+
     return PlainTextResponse(last_25_lines_joined.encode("utf-8"))
 
 
