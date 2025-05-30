@@ -1,5 +1,6 @@
 fastapi
-myskoda==1.2.3
+httpx
 mariadb
+myskoda==1.2.3
 uvicorn
 watchfiles
