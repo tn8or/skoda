@@ -3,17 +3,19 @@ FROM python:3.13-alpine AS build
 WORKDIR /app
 ARG TARGETPLATFORM
 RUN echo "I'm building for $TARGETPLATFORM"
-RUN apk add --no-cache mariadb-client mariadb-connector-c-dev gcc musl-dev curl
+RUN apk add --no-cache mariadb-client mariadb-connector-c-dev gcc musl-dev
 
 ENV VIRTUAL_ENV=/opt/venv
 RUN python3 -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-RUN . /opt/venv/bin/activate && pip install --no-cache-dir --upgrade pip
+RUN . /opt/venv/bin/activate && pip install --no-cache-dir --upgrade pip pip-tools
 
-COPY ./requirements.txt /app
+COPY ./requirements.in /tmp
 
-RUN . /opt/venv/bin/activate && pip install --no-cache-dir --upgrade -r ./requirements.txt
+RUN . /opt/venv/bin/activate && pip-compile --output-file=/tmp/requirements.txt /tmp/requirements.in
+
+RUN . /opt/venv/bin/activate && pip install --no-cache-dir --upgrade -r /tmp/requirements.txt
 
 FROM python:3.13-alpine AS final
 
