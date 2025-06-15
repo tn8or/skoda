@@ -11,9 +11,7 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 RUN . /opt/venv/bin/activate && pip install --no-cache-dir --upgrade pip pip-tools
 
-COPY ./requirements.in /tmp
-
-RUN . /opt/venv/bin/activate && pip-compile --output-file=/tmp/requirements.txt /tmp/requirements.in
+COPY ./requirements.txt /tmp
 
 RUN . /opt/venv/bin/activate && pip install --no-cache-dir --upgrade -r /tmp/requirements.txt
 
