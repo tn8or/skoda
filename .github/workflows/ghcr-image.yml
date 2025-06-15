@@ -64,7 +64,7 @@ jobs:
         if: github.actor != 'dependabot[bot]'
         uses: distributhor/workflow-webhook@v3
         with:
-          webhook_url: ${{ secrets.WEBHOOK }}
-          webhook_auth: ${{ secrets.WEBHOOK_AUTH }}
+          webhook_url: ${{ env.WEBHOOK }}
+          #          webhook_auth: ${{ secrets.WEBHOOK_AUTH }}
           webhook_auth_type: none
           verbose: true
