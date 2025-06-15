@@ -65,6 +65,6 @@ jobs:
         uses: distributhor/workflow-webhook@v3
         with:
           webhook_url: ${{ env.WEBHOOK }}
-          #          webhook_auth: ${{ secrets.WEBHOOK_AUTH }}
+          #          webhook_auth: ${{ secrets.WEBHOOK_AUTH }} #uncomment if you need authentication
           webhook_auth_type: none
           verbose: true
