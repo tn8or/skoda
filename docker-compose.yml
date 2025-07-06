@@ -14,7 +14,7 @@ services:
     networks:
       - mariadb_network
     volumes:
-      - .:/app
+      - ./skodaimporter:/app
     secrets:
       - SKODA_USER
       - SKODA_PASS
