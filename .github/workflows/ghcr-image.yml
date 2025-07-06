@@ -26,7 +26,6 @@ jobs:
       matrix:
         include:
           - image: ghcr.io/skodaimporter
-            dockerfile: skodaimporter/Dockerfile
             context-path: ./skodaimporter
 
     steps:
@@ -62,7 +61,7 @@ jobs:
         with:
           platforms: linux/amd64 #, linux/arm64
           context: ${{ matrix.context-path }}
-          file: ${{ matrix.dockerfile }}
+          file: ${{ matrix.context-path }}/Dockerfile
           push: true
           tags: ${{ matrix.image }}:latest
           cache-from: type=gha
