@@ -25,7 +25,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - image: ${{ env.REGISTRY }}/skodaImporter
+          - image: ghcr.io/skodaImporter
             dockerfile: skodaImporter/Dockerfile
 
     steps:
