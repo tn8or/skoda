@@ -1,5 +1,6 @@
 import os
 
+# paths to look for secrets
 SECRET_PATHS = [
     "/etc/secrets/tronity",
     "/etc/secrets/redis",
