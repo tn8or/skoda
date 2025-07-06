@@ -100,6 +100,7 @@ async def fetch_and_store_charge():
         "timestamp": new_charge_row[0],
         "amount": new_charge_row[1],
         "position": new_charge_row[2],
+    }
 
     my_logger.debug(f"New charge fetched: {new_charge}")
     if last_timestamp is None or new_charge["timestamp"] > last_timestamp:

@@ -1,9 +1,23 @@
 version: "3"
 services:
-  dataloader:
+  importer:
     image: ghcr.io/tn8or/skodaimporter:latest
     restart: always
     hostname: skodaimporter
+    ports:
+      - "2380:80"
+    environment:
+      SKODA_USER: ${SKODA_USER}
+      SKODA_PASS: ${SKODA_PASS}
+      MARIADB_DATABASE: ${MARIADB_DATABASE}
+      MARIADB_USERNAME: ${MARIADB_USERNAME}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+      MARIADB_HOSTNAME: ${MARIADB_HOSTNAME}
+
+  chargefinder:
+    image: ghcr.io/tn8or/skodachargefinder:latest
+    restart: always
+    hostname: skodachargefinder
     ports:
       - "2380:80"
     environment:
