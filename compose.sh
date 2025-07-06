@@ -2,7 +2,7 @@
 
 if [ $1 = "up" ]; then
 source .venv/bin/activate
-pip-compile --output-file=requirements.txt requirements.in
+pip-compile --output-file=skodaimporter/requirements.txt skodaimporter/requirements.in
 docker compose build
 fi
 docker compose $1
