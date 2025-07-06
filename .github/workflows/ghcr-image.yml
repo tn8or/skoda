@@ -25,7 +25,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - image: ghcr.io/skodaimporter
+          - image: ghcr.io/tn8or/skodaimporter
             context-path: ./skodaimporter
 
     steps:
