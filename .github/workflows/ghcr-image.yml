@@ -59,7 +59,6 @@ jobs:
         if: github.actor != 'dependabot[bot]'
         uses: docker/build-push-action@v4
         with:
-          push: true
           platforms: linux/amd64 #, linux/arm64
           context: .
           file: ${{ matrix.dockerfile }}
