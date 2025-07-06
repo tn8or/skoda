@@ -1,7 +1,7 @@
 version: "3"
 services:
   dataloader:
-    image: ghcr.io/tn8or/skodaimporter:main
+    image: ghcr.io/tn8or/skodaimporter:latest
     restart: always
     hostname: skodaimporter
     ports:
