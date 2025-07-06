@@ -1,6 +1,8 @@
 services:
-  app:
-    build: .
+  importer:
+    build:
+      context: ./skodaImporter
+      dockerfile: Dockerfile
     container_name: skodaImporter
     entrypoint: uvicorn main:app --host 0.0.0.0 --port 80 --reload --reload-exclude *tmp
     restart: always
@@ -9,6 +11,8 @@ services:
       - mariadb
     ports:
       - 80:80
+    networks:
+      - mariadb_network
     volumes:
       - .:/app
     secrets:
