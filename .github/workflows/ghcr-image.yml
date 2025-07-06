@@ -27,7 +27,7 @@ jobs:
         include:
           - image: ghcr.io/skodaimporter
             dockerfile: skodaimporter/Dockerfile
-            context-path: skodaimporter
+            context-path: ./skodaimporter
 
     steps:
       - name: Checkout repository
