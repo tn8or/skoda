@@ -27,6 +27,7 @@ jobs:
         include:
           - image: ghcr.io/skodaimporter
             dockerfile: skodaimporter/Dockerfile
+            context-path: skodaimporter
 
     steps:
       - name: Checkout repository
@@ -60,7 +61,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           platforms: linux/amd64 #, linux/arm64
-          context: .
+          context: ${{ matrix.context-path }}
           file: ${{ matrix.dockerfile }}
           push: true
           tags: ${{ matrix.image }}:latest
