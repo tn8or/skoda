@@ -23,6 +23,30 @@ services:
       - MARIADB_PASSWORD
       - MARIADB_HOSTNAME
 
+  chargefinder:
+    build:
+      context: ./skodachargefinder
+      dockerfile: Dockerfile
+    container_name: skodachargefinder
+    entrypoint: uvicorn chargefinder:app --host 0.0.0.0 --port 80 --reload --reload-exclude *tmp
+    restart: always
+
+    depends_on:
+      - mariadb
+    ports:
+      - 2080:80
+    networks:
+      - mariadb_network
+    volumes:
+      - ./skodachargefinder:/app
+    secrets:
+      - SKODA_USER
+      - SKODA_PASS
+      - MARIADB_DATABASE
+      - MARIADB_USERNAME
+      - MARIADB_PASSWORD
+      - MARIADB_HOSTNAME
+
   mariadb:
     image: mariadb:latest
     container_name: mariadb

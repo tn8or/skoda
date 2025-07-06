@@ -6,6 +6,7 @@ import time
 
 import mariadb
 from aiohttp import ClientSession
+from commons import load_secret
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.responses import PlainTextResponse
 from myskoda import MySkoda
@@ -14,8 +15,6 @@ from myskoda.models.health import Health
 from myskoda.models.info import Info
 from myskoda.models.position import PositionType
 from myskoda.models.status import Status
-
-from commons import load_secret
 
 VIN = ""
 my_logger = logging.getLogger("skodaimportlogger")
@@ -85,6 +84,11 @@ async def on_event(event: Event):
             my_logger.debug("Battery is %s%% charged.", event.event.data.soc)
             await save_log_to_db(f"Battery is {event.event.data.soc}% charged.")
             await get_skoda_update(VIN)
+    if event.type == EventType.OPERATION_EVENT:
+        my_logger.debug("Received operation event.")
+        await save_log_to_db("Received operation event.")
+        await save_log_to_db("Charging started.")
+        await get_skoda_update(VIN)
 
 
 async def get_skoda_update(vin):
