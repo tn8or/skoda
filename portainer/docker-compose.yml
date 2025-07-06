@@ -19,7 +19,7 @@ services:
     restart: always
     hostname: skodachargefinder
     ports:
-      - "2380:80"
+      - "2480:80"
     environment:
       SKODA_USER: ${SKODA_USER}
       SKODA_PASS: ${SKODA_PASS}
