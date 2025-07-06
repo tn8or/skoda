@@ -1,9 +1,9 @@
 services:
   importer:
     build:
-      context: ./skodaImporter
+      context: ./skodaimporter
       dockerfile: Dockerfile
-    container_name: skodaImporter
+    container_name: skodaimporter
     entrypoint: uvicorn main:app --host 0.0.0.0 --port 80 --reload --reload-exclude *tmp
     restart: always
 

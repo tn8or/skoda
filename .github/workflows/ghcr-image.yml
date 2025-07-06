@@ -25,8 +25,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - image: ghcr.io/skodaImporter
-            dockerfile: skodaImporter/Dockerfile
+          - image: ghcr.io/skodaimporter
+            dockerfile: skodaimporter/Dockerfile
 
     steps:
       - name: Checkout repository
