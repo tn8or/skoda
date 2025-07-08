@@ -10,6 +10,9 @@ from commons import load_secret
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.responses import PlainTextResponse
 
+lastsoc = 0
+lastrange = 0
+
 my_logger = logging.getLogger("skodachargefindlogger")
 my_logger.setLevel(logging.DEBUG)
 
@@ -154,6 +157,8 @@ async def find_vehicle_position(hour):
 
 
 async def fetch_and_store_charge():
+    global lastsoc
+    global lastrange
     my_logger.debug("Fetching and storing charge...")
     last_stored_charge = await read_last_charge()
     if last_stored_charge:
@@ -165,7 +170,7 @@ async def fetch_and_store_charge():
     # see if newer charges are available in the rawlogs table
     query = (
         "SELECT * FROM skoda.rawlogs WHERE log_timestamp > ? and "
-        "(log_message like '%ChargingState.CHARGING%' or log_message like '%ChargingState.READY_FOR_CHARGING%') "
+        "(log_message like '%ChargingState.CHARGING%' or log_message like '%ChargingState.READY_FOR_CHARGING%' or log_message like '%OperationName.STOP_CHARGING%') "
         "order by log_timestamp ASC"
     )
     my_logger.debug(f"Executing query: {query} with last_timestamp: {last_timestamp}")
@@ -184,8 +189,10 @@ async def fetch_and_store_charge():
     mileage = await find_vehicle_mileage(dt_str_split[0])
     my_logger.debug(f"Vehicle mileage found: {mileage}")
 
-    charged_range = new_charge_row[1].split("charged_range=")[1].split(",")[0]
     if "READY_FOR_CHARGING" in new_charge_row[1]:
+        operation = "stop"
+        my_logger.debug("Charge operation is 'stop'")
+    elif "STOP_CHARGING" in new_charge_row[1]:
         operation = "stop"
         my_logger.debug("Charge operation is 'stop'")
     elif "CHARGING" in new_charge_row[1]:
@@ -195,6 +202,18 @@ async def fetch_and_store_charge():
         my_logger.error("No charge operation foudn in row")
         await time.sleep(10)
 
+    if "soc=" in new_charge_row[1]:
+        soc = new_charge_row[1].split("soc=")[1].split(",")[0]
+        lastsoc = soc
+    else:
+        soc = lastsoc
+
+    if "charged_range=" in new_charge_row[1]:
+        charged_range = new_charge_row[1].split("charged_range=")[1].split(",")[0]
+        lastrange = charged_range
+    else:
+        charged_range = lastrange
+
     new_charge = {
         "timestamp": dt_str,
         "pos_lat": position[0] if position else None,
@@ -202,11 +221,11 @@ async def fetch_and_store_charge():
         "charged_range": charged_range,
         "mileage": mileage,
         "event_type": operation,
-        "soc": new_charge_row[1].split("soc=")[1].split(",")[0],
+        "soc": soc,
     }
 
     my_logger.debug(f"New charge fetched: {new_charge}")
-    if last_timestamp is 0 or new_charge["timestamp"] != last_timestamp:
+    if last_timestamp == 0 or new_charge["timestamp"] != last_timestamp:
         my_logger.debug(
             "New charge is newer than the last stored charge, writing to DB..."
         )
