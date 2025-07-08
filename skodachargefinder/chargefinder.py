@@ -173,7 +173,7 @@ async def fetch_and_store_charge():
     new_charge_row = cur.fetchone()
     if not new_charge_row:
         my_logger.debug("No new charge found in rawlogs table.")
-        return
+        return 600
     my_logger.debug(f"Charge row fetched: {new_charge_row}")
 
     dt_str = new_charge_row[0].strftime("%Y-%m-%d %H:%M:%S")
@@ -216,7 +216,6 @@ async def fetch_and_store_charge():
     else:
         my_logger.debug("No new charge to write, skipping...")
         # there were no new records, sleep for a while before checking again
-        return 600
 
 
 async def chargerunner():
