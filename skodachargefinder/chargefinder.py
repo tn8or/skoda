@@ -217,7 +217,7 @@ async def chargerunner():
         my_logger.debug("Running chargerunner...")
         await fetch_and_store_charge()
         # Sleep for 10 seconds before the next iteration
-        await asyncio.sleep(1)
+        await asyncio.sleep(300)
 
 
 def read_last_n_lines(filename, n):
