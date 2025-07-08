@@ -76,7 +76,7 @@ async def write_charge_to_db(charge):
     try:
         my_logger.debug(f"Writing charge to database: {charge}")
         cur.execute(
-            "INSERT INTO skoda.charge_events (event_timestamp, pos_lat, pos_lon, charged_range, mileage, event_type) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO skoda.charge_events (event_timestamp, pos_lat, pos_lon, charged_range, mileage, event_type, soc) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 charge["timestamp"],
                 charge["pos_lat"],
@@ -84,6 +84,7 @@ async def write_charge_to_db(charge):
                 charge["charged_range"],
                 charge["mileage"],
                 charge["event_type"],
+                charge["soc"],
             ),
         )
         conn.commit()
@@ -184,12 +185,15 @@ async def fetch_and_store_charge():
     my_logger.debug(f"Vehicle mileage found: {mileage}")
 
     charged_range = new_charge_row[1].split("charged_range=")[1].split(",")[0]
-    if "CHARGING" in new_charge_row[1]:
-        operation = "start"
-    elif "READY_FOR_CHARGING" in new_charge_row[1]:
+    if "READY_FOR_CHARGING" in new_charge_row[1]:
         operation = "stop"
+        my_logger.debug("Charge operation is 'stop'")
+    elif "CHARGING" in new_charge_row[1]:
+        operation = "start"
+        my_logger.debug("Charge operation is 'start'")
     else:
-        my_logger.debug("No charge operation foudn in row")
+        my_logger.error("No charge operation foudn in row")
+        await time.sleep(10)
 
     new_charge = {
         "timestamp": dt_str,
@@ -198,6 +202,7 @@ async def fetch_and_store_charge():
         "charged_range": charged_range,
         "mileage": mileage,
         "event_type": operation,
+        "soc": new_charge_row[1].split("soc=")[1].split(",")[0],
     }
 
     my_logger.debug(f"New charge fetched: {new_charge}")
@@ -217,7 +222,7 @@ async def chargerunner():
         my_logger.debug("Running chargerunner...")
         await fetch_and_store_charge()
         # Sleep for 10 seconds before the next iteration
-        await asyncio.sleep(300)
+        await asyncio.sleep(10)
 
 
 def read_last_n_lines(filename, n):
