@@ -4,7 +4,7 @@ services:
       context: ./skodaimporter
       dockerfile: Dockerfile
     container_name: skodaimporter
-    entrypoint: uvicorn main:app --host 0.0.0.0 --port 80 --reload --reload-exclude *tmp
+    entrypoint: uvicorn chargeimporter:app --host 0.0.0.0 --port 80 --reload --reload-exclude *tmp
     restart: always
 
     depends_on:

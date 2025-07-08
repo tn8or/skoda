@@ -11,6 +11,7 @@ from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.responses import PlainTextResponse
 from myskoda import MySkoda
 from myskoda.event import Event, EventType, ServiceEventTopic
+from myskoda.models.charging import Charging
 from myskoda.models.health import Health
 from myskoda.models.info import Info
 from myskoda.models.position import PositionType
@@ -90,6 +91,10 @@ async def on_event(event: Event):
             my_logger.debug("Battery is %s%% charged.", event.event.data.soc)
             await save_log_to_db(f"Battery is {event.event.data.soc}% charged.")
             await get_skoda_update(VIN)
+            charging: Charging = await myskoda.get_charging(VIN)
+            my_logger.debug("Charging data fetched.")
+            await save_log_to_db(f"Charging data fetched: {charging}")
+            my_logger.debug(charging)
 
 
 async def get_skoda_update(vin):

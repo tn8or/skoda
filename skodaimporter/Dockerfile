@@ -25,5 +25,5 @@ RUN apk add --no-cache mariadb-connector-c curl
 COPY . /app
 COPY --from=build /opt /opt
 
-ENTRYPOINT  ["uvicorn","main:app","--host","0.0.0.0","--port","80"]
+ENTRYPOINT  ["uvicorn","chargeimporter:app","--host","0.0.0.0","--port","80"]
 HEALTHCHECK --interval=10s --timeout=3s --retries=1 --start-period=10s --start-interval=5s CMD curl --fail http://localhost:80 || exit 1
