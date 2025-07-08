@@ -172,7 +172,7 @@ async def fetch_and_store_charge():
     query = (
         "SELECT * FROM skoda.rawlogs WHERE log_timestamp > ? and "
         "(log_message like '%ChargingState.CHARGING%' or log_message like '%ChargingState.READY_FOR_CHARGING%' or log_message like '%OperationName.STOP_CHARGING%') "
-        "order by log_timestamp ASC"
+        "order by log_timestamp ASC LIMIT 1"
     )
     my_logger.debug(f"Executing query: {query} with last_timestamp: {last_timestamp}")
     cur.execute(query, (last_timestamp,))
