@@ -103,11 +103,8 @@ async def find_vehicle_mileage(hour):
     my_logger.debug(f"Finding vehicle mileage for {hour}:00")
     try:
         cur.execute(
-            "SELECT log_message FROM skoda.rawlogs WHERE log_timestamp >= ? AND log_timestamp < ? AND log_message LIKE '%mileage:%' ORDER BY log_timestamp DESC LIMIT 1",
-            (
-                f"{hour}:00:00",
-                f"{hour}:59:59",
-            ),
+            "SELECT log_message FROM skoda.rawlogs WHERE log_timestamp >= ? AND log_message LIKE '%mileage:%' ORDER BY log_timestamp ASC LIMIT 1",
+            (f"{hour}:00:00",),
         )
         row = cur.fetchone()
         if row:
