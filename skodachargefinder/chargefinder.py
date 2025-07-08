@@ -211,8 +211,12 @@ async def fetch_and_store_charge():
             "New charge is newer than the last stored charge, writing to DB..."
         )
         await write_charge_to_db(new_charge)
+        # quick turnaround since theres still records in the database
+        return 1
     else:
         my_logger.debug("No new charge to write, skipping...")
+        # there were no new records, sleep for a while before checking again
+        return 600
 
 
 async def chargerunner():
@@ -220,9 +224,9 @@ async def chargerunner():
 
     while True:
         my_logger.debug("Running chargerunner...")
-        await fetch_and_store_charge()
+        sleeptime = await fetch_and_store_charge()
         # Sleep for 10 seconds before the next iteration
-        await asyncio.sleep(300)
+        await asyncio.sleep(sleeptime if sleeptime else 10)
 
 
 def read_last_n_lines(filename, n):
@@ -253,9 +257,9 @@ async def root():
 
         os.kill(os.getpid(), signal.SIGINT)
     rows = cur.fetchall()
-    msg = "\n".join([str(row) for row in rows])
+    last_25_lines_joined += "\n".join([str(row) for row in rows])
 
-    return PlainTextResponse(msg.encode("utf-8"))
+    return PlainTextResponse(last_25_lines_joined.encode("utf-8"))
 
 
 background = asyncio.create_task(chargerunner())
