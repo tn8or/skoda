@@ -12,6 +12,8 @@ from fastapi.responses import PlainTextResponse
 
 lastsoc = 0
 lastrange = 0
+lastlat = 0
+lastlon = 0
 
 my_logger = logging.getLogger("skodachargefindlogger")
 my_logger.setLevel(logging.DEBUG)
@@ -159,6 +161,8 @@ async def find_vehicle_position(hour):
 async def fetch_and_store_charge():
     global lastsoc
     global lastrange
+    global lastlat
+    global lastlon
     my_logger.debug("Fetching and storing charge...")
     last_stored_charge = await read_last_charge()
     if last_stored_charge:
@@ -213,6 +217,13 @@ async def fetch_and_store_charge():
         lastrange = charged_range
     else:
         charged_range = lastrange
+
+    if not position:
+        my_logger.debug("No position found, using last known position.")
+        position = [lastlat, lastlon]
+    else:
+        lastlat = position[0]
+        lastlon = position[1]
 
     new_charge = {
         "timestamp": dt_str,
