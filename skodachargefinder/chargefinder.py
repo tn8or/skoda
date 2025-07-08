@@ -212,7 +212,7 @@ async def fetch_and_store_charge():
         )
         await write_charge_to_db(new_charge)
         # quick turnaround since theres still records in the database
-        return 1
+        return 0.1
     else:
         my_logger.debug("No new charge to write, skipping...")
         # there were no new records, sleep for a while before checking again
