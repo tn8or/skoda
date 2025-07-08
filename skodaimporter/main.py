@@ -23,12 +23,18 @@ my_logger.setLevel(logging.DEBUG)
 file_handler = logging.FileHandler("app.log")
 file_handler.setLevel(logging.DEBUG)
 
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.DEBUG)
+
 # Optional: set a formatter
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 file_handler.setFormatter(formatter)
+console_handler.setFormatter(formatter)
 
 # Add the handler to the logger
 my_logger.addHandler(file_handler)
+my_logger.addHandler(console_handler)
+# Optional: set a formatter
 
 my_logger.warning("Starting the application...")
 
@@ -84,11 +90,6 @@ async def on_event(event: Event):
             my_logger.debug("Battery is %s%% charged.", event.event.data.soc)
             await save_log_to_db(f"Battery is {event.event.data.soc}% charged.")
             await get_skoda_update(VIN)
-    if event.type == EventType.OPERATION_EVENT:
-        my_logger.debug("Received operation event.")
-        await save_log_to_db("Received operation event.")
-        await save_log_to_db("Charging started.")
-        await get_skoda_update(VIN)
 
 
 async def get_skoda_update(vin):
