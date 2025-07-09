@@ -29,6 +29,8 @@ jobs:
             context-path: ./skodaimporter
           - image: ghcr.io/tn8or/skodachargefinder
             context-path: ./skodachargefinder
+          - image: ghcr.io/tn8or/skodachargecollector
+            context-path: ./skodachargecollector
 
     steps:
       - name: Checkout repository

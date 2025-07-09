@@ -1,4 +1,4 @@
-mariadb
 fastapi
+mariadb
 uvicorn
 watchfiles

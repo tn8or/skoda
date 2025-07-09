@@ -47,6 +47,30 @@ services:
       - MARIADB_PASSWORD
       - MARIADB_HOSTNAME
 
+  chargecollector:
+    build:
+      context: ./skodachargecollector
+      dockerfile: Dockerfile
+    container_name: skodachargecollector
+    entrypoint: uvicorn chargecollector:app --host 0.0.0.0 --port 80 --reload --reload-exclude *tmp
+    restart: always
+
+    depends_on:
+      - mariadb
+    ports:
+      - 3080:80
+    networks:
+      - mariadb_network
+    volumes:
+      - ./skodachargecollector:/app
+    secrets:
+      - SKODA_USER
+      - SKODA_PASS
+      - MARIADB_DATABASE
+      - MARIADB_USERNAME
+      - MARIADB_PASSWORD
+      - MARIADB_HOSTNAME
+
   mariadb:
     image: mariadb:latest
     container_name: mariadb
