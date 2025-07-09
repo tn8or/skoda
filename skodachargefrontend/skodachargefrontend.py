@@ -242,8 +242,8 @@ async def root(
                     </div>
                     <div class="divTableFoot">
                         <div class="divTableRow font-bold">
-                            <div class="divTableCell"></div>
-                            <div class="divTableCell">{maxmileage-minmileage}</div>
+                            <div class="divTableCell">{len(rows)} charges</div>
+                            <div class="divTableCell">{maxmileage-minmileage} KM</div>
                             <div class="divTableCell">{total_amount:.2f} kWh</div>
                             <div class="divTableCell">{total_price:.2f} DKK</div>
                             <div class="divTableCell"></div>
