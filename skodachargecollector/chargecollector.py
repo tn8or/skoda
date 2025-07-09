@@ -263,6 +263,81 @@ async def update_charge_with_event_data(charge_id, charge):
         return False
 
 
+async def find_empty_amount():
+    my_logger.debug("Finding charge hours with empty amounts")
+    try:
+        cur.execute("SELECT id FROM skoda.charge_hours WHERE amount IS NULL")
+        row = cur.fetchone()
+        my_logger.debug(f"Found charge-hour with null amount")
+        return row[0]
+    except mariadb.Error as e:
+        my_logger.error(f"Error fetching unlinked charge events: {e}")
+        conn.rollback()
+        return None
+
+
+async def calculate_and_update_charge_amount(charge_id):
+    my_logger.debug(f"Calculating charge amount for charge hour {charge_id}")
+    try:
+        cur.execute(
+            "SELECT start_at, stop_at FROM skoda.charge_hours WHERE id = ?",
+            (charge_id,),
+        )
+        row = cur.fetchone()
+        my_logger.debug(
+            f"Fetched start and stop times for charge hour {charge_id}: {row}"
+        )
+        if row and row[0] and row[1]:
+            start_at = row[0]
+            stop_at = row[1]
+            my_logger.debug(
+                "Raw start_at: %s, stop_at: %s for charge hour %s",
+                start_at,
+                stop_at,
+                charge_id,
+            )
+            # Use as-is if already datetime, else parse
+            if isinstance(start_at, datetime.datetime):
+                start_time = start_at
+            else:
+                start_time = datetime.datetime.strptime(start_at, "%Y-%m-%d %H:%M:%S")
+            if isinstance(stop_at, datetime.datetime):
+                stop_time = stop_at
+            else:
+                stop_time = datetime.datetime.strptime(stop_at, "%Y-%m-%d %H:%M:%S")
+            my_logger.debug(
+                "Parsed start time: %s, stop time: %s for charge hour %s",
+                start_time,
+                stop_time,
+                charge_id,
+            )
+            duration = (stop_time - start_time).total_seconds() / 3600  # in hours
+            amount = duration * 10.5  # Assuming 10.5 kW charging rate
+            my_logger.debug(
+                f"Calculated duration: {duration} hours, amount: {amount} for charge hour {charge_id}"
+            )
+            # Update the charge hour with the calculated amount
+            my_logger.debug("Updating charge hour with calculated amount")
+            my_logger.debug(
+                "Executing SQL update for charge hour %s with amount %s",
+                charge_id,
+                amount,
+            )
+            cur.execute(
+                "UPDATE skoda.charge_hours SET amount = ? WHERE id = ?",
+                (amount, charge_id),
+            )
+            conn.commit()
+            my_logger.debug(
+                f"Charge amount updated to {amount} for charge hour {charge_id}"
+            )
+        else:
+            my_logger.debug("No valid start or stop time found for charge hour.")
+    except mariadb.Error as e:
+        my_logger.error(f"Error calculating charge amount: {e}")
+        conn.rollback()
+
+
 async def chargerunner():
     my_logger.debug("Starting main function...")
 
@@ -270,6 +345,7 @@ async def chargerunner():
         charge = None
         my_logger.debug("Running chargecollector...")
         charge = await find_next_unlinked_event()
+        sleeptime = 60
         if charge:
             my_logger.debug("Found unlinked charge event, processing... ")
             my_logger.debug("Processing charge: %s", charge)
@@ -281,7 +357,18 @@ async def chargerunner():
             sleeptime = 0.001
         else:
             my_logger.debug("No charge found to process.")
-            sleeptime = 60
+        # Check if there are any charge hours with empty amounts
+        empty_charge_id = await find_empty_amount()
+
+        if empty_charge_id:
+            my_logger.debug(
+                "Found charge hour with empty amount, calculating amount..."
+            )
+            await calculate_and_update_charge_amount(empty_charge_id)
+            my_logger.debug("Charge amount calculated and updated successfully.")
+            sleeptime = 0.001
+        else:
+            my_logger.debug("No charge hours with empty amounts found.")
 
             # sleeptime = await fetch_and_store_charge()
             # Sleep for 10 seconds before the next iteration

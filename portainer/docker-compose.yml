@@ -33,7 +33,7 @@ services:
     restart: always
     hostname: skodachargecollector
     ports:
-      - "3480:80"
+      - "2580:80"
     environment:
       SKODA_USER: ${SKODA_USER}
       SKODA_PASS: ${SKODA_PASS}
