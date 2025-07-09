@@ -165,13 +165,13 @@ async def root(
                 <div class="divTable">
                     <div class="divTableHeading">
                         <div class="divTableRow">
+                            <div class="divTableHead">Charge ended at</div>
                             <div class="divTableHead">KM</div>
                             <div class="divTableHead">Charge kWh</div>
                             <div class="divTableHead">Price (DKK)</div>
                             <div class="divTableHead">Range when done</div>
                             <div class="divTableHead">Charged range</div>
                             <div class="divTableHead">Estimated range per kWh</div>
-                            <div class="divTableHead">Charge ended at</div>
                             <div class="divTableHead">Position</div>
                         </div>
                     </div>
@@ -200,13 +200,13 @@ async def root(
 
         html += f"""
                         <div class="divTableRow">
+                            <div class="divTableCell text-white">{stopped_at}</div>
                             <div class="divTableCell text-white">{mileage}</div>
                             <div class="divTableCell text-white">{amount:.2f} kWh</div>
                             <div class="divTableCell text-white">{price:.2f} DKK</div>
                             <div class="divTableCell text-white">{charged_range} KM</div>
                             <div class="divTableCell text-white">{range_diff} KM</div>
                             <div class="divTableCell text-white">{range_per_kwh}</div>
-                            <div class="divTableCell text-white">{stopped_at}</div>
                             <div class="divTableCell text-white">{position}</div>
                         </div>
         """
