@@ -88,7 +88,8 @@ async def root(
             MAX(mileage) AS mileage,
             MAX(stop_at) AS stopped_at,
             position AS position,
-            MAX(charged_range)-MIN(charged_range) AS charged_range_diff
+            MAX(charged_range)-MIN(charged_range) AS charged_range_diff,
+            max(soc) AS soc
 
         FROM skoda.charge_hours
         WHERE stop_at >= %s AND stop_at < %s
@@ -181,6 +182,7 @@ async def root(
                             <div class="divTableHead">Range when done</div>
                             <div class="divTableHead">Charged range</div>
                             <div class="divTableHead">Estimated range per kWh</div>
+                            <div class="divTableHead">SOC</div>
                             <div class="divTableHead">Position</div>
                         </div>
                     </div>
@@ -196,6 +198,7 @@ async def root(
         stopped_at = row[4]
         position = row[5] if row[5] else "Unknown"
         range_diff = row[6] if row[6] else 0
+        soc = row[7]
         range_per_kwh = (
             round(range_diff / amount, 2) if (amount > 0 and range_diff > 0) else 0
         )
@@ -232,6 +235,7 @@ async def root(
                             <div class="divTableCell text-white">{charged_range} KM</div>
                             <div class="divTableCell text-white">{range_diff} KM</div>
                             <div class="divTableCell text-white">{range_per_kwh}</div>
+                            <div class="divTableCell text-white">{soc}%</div>
                             <div class="divTableCell text-white">{position}</div>
                         </div>
         """
@@ -249,6 +253,7 @@ async def root(
                             <div class="divTableCell"></div>
                             <div class="divTableCell"></div>
                             <div class="divTableCell">Estimated: {round(total_range_per_kwh / range_count,2) if total_range_per_kwh > 0 and range_count > 0 else 0}<br />Actual: {avg_range_per_kwh  if total_range_per_kwh > 0 and range_count > 0 else 0 }</div>
+                            <div class="divTableCell"></div>
                             <div class="divTableCell"></div>
                         </div>
                     </div>
