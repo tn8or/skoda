@@ -1,0 +1,5 @@
+fastapi
+mariadb
+uvicorn
+watchfiles
+httpx

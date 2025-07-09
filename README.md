@@ -2,6 +2,10 @@
 
 This project is designed to subscribe to the MySkoda service and offload relevant vehicle information into a local Graylog server. The primary goal is to monitor and log data from a Skoda Enyaq 80 electric vehicle. In the future, the project will include functionality to save charging information into a database to calculate the running costs of the car.
 
+# Very much a vibe-code-thing
+
+So, this is absolutely a "get chatgpt to do the work and see what happens" kind of project. Consider yourself warned.
+
 ## Features
 
 - **Event Subscription**: Subscribes to the MySkoda service to receive real-time updates about the vehicle.
