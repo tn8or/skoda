@@ -58,6 +58,13 @@ except mariadb.Error as e:
 cur = conn.cursor()
 
 
+async def ordinal(n):
+    if 11 <= n % 100 <= 13:
+        return f"{n}th"
+    else:
+        return f"{n}{['th', 'st', 'nd', 'rd', 'th'][min(n % 10, 4)]}"
+
+
 app = FastAPI()
 
 
@@ -94,6 +101,8 @@ async def root(
     # Calculate totals
     total_amount = 0.0
     total_price = 0.0
+    total_range_per_kwh = 0
+    range_count = 0
 
     # Pagination logic
     prev_month = month - 1
@@ -179,9 +188,6 @@ async def root(
     """
     minmileage = min(row[3] for row in rows) if rows else 0
     maxmileage = max(row[3] for row in rows) if rows else 0
-    avg_charged_range_per_kwh = (
-        round(sum(row[6] for row in rows) / len(rows), 2) if rows else 0
-    )
     for row in rows:
         amount = round(row[0] or 0, 2)
         price = round(row[1] or 0, 2)
@@ -193,14 +199,33 @@ async def root(
         range_per_kwh = (
             round(range_diff / amount, 2) if (amount > 0 and range_diff > 0) else 0
         )
+        if range_per_kwh > 0:
+            total_range_per_kwh = total_range_per_kwh + range_per_kwh
+            range_count += 1
+
         if position != "home":
             price = 0.0  # If not at home, we don't charge for the electricity
         total_amount += amount
         total_price += price
 
+        # Format stopped_at to only show the hour (HH:MM)
+        stopped_at_str = ""
+        if stopped_at:
+            try:
+                if isinstance(stopped_at, str):
+                    dt = datetime.datetime.fromisoformat(stopped_at)
+                else:
+                    dt = stopped_at
+                day = await ordinal(dt.day)
+                stopped_at_str = dt.strftime("%a ") + day + " @ " + dt.strftime("%H:%M")
+            except Exception:
+                stopped_at_str = str(stopped_at)
+        else:
+            stopped_at_str = ""
+
         html += f"""
                         <div class="divTableRow">
-                            <div class="divTableCell text-white">{stopped_at}</div>
+                            <div class="divTableCell text-white">{stopped_at_str}</div>
                             <div class="divTableCell text-white">{mileage}</div>
                             <div class="divTableCell text-white">{amount:.2f} kWh</div>
                             <div class="divTableCell text-white">{price:.2f} DKK</div>
@@ -217,13 +242,13 @@ async def root(
                     </div>
                     <div class="divTableFoot">
                         <div class="divTableRow font-bold">
+                            <div class="divTableCell"></div>
                             <div class="divTableCell">{maxmileage-minmileage}</div>
                             <div class="divTableCell">{total_amount:.2f} kWh</div>
                             <div class="divTableCell">{total_price:.2f} DKK</div>
                             <div class="divTableCell"></div>
                             <div class="divTableCell"></div>
-                            <div class="divTableCell">Estimated: {avg_charged_range_per_kwh}, actual: {avg_range_per_kwh}</div>
-                            <div class="divTableCell"></div>
+                            <div class="divTableCell">Estimated: {round(total_range_per_kwh / range_count,2) if total_range_per_kwh > 0 and range_count > 0 else 0}<br />Actual: {avg_range_per_kwh  if total_range_per_kwh > 0 and range_count > 0 else 0 }</div>
                             <div class="divTableCell"></div>
                         </div>
                     </div>
