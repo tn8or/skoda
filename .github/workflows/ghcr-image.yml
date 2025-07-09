@@ -33,6 +33,8 @@ jobs:
             context-path: ./skodachargecollector
           - image: ghcr.io/tn8or/skodaupdatechargeprices
             context-path: ./skodaupdatechargeprices
+          - image: ghcr.io/tn8or/skodachargefrontend
+            context-path: ./skodachargefrontend
 
     steps:
       - name: Checkout repository

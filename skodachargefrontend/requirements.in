@@ -1,0 +1,4 @@
+mariadb
+fastapi
+uvicorn
+watchfiles

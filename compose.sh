@@ -2,10 +2,8 @@
 
 if [ $1 = "up" ]; then
 source .venv/bin/activate
-pip-compile --output-file=skodaimporter/requirements.txt skodaimporter/requirements.in
-pip-compile --output-file=skodachargefinder/requirements.txt skodachargefinder/requirements.in
-pip-compile --output-file=skodachargecollector/requirements.txt skodachargecollector/requirements.in
-pip-compile --output-file=skodaupdatechargeprices/requirements.txt skodaupdatechargeprices/requirements.in
+folders="skodaimporter skodachargefinder skodachargecollector skodaupdatechargeprices skodachargefrontend"
+echo ${folders} | xargs -P 8 -t -n 1 -I {} sh -c 'pip-compile --output-file={}/requirements.txt {}/requirements.in'
 docker compose build
 fi
 docker compose $1

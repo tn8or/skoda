@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        /* DivTable.com */
+        .divTable {
+            display: table;
+            width: 100%;
+        }
+
+        .divTableRow {
+            display: table-row;
+        }
+
+        .divTableHeading {
+            background-color: #EEE;
+            display: table-header-group;
+        }
+
+        .divTableCell,
+        .divTableHead {
+            border: 1px solid #999999;
+            display: table-cell;
+            padding: 3px 10px;
+        }
+
+        .divTableHeading {
+            background-color: #EEE;
+            display: table-header-group;
+            font-weight: bold;
+        }
+
+        .divTableFoot {
+            background-color: #EEE;
+            display: table-footer-group;
+            font-weight: bold;
+        }
+
+        .divTableBody {
+            display: table-row-group;
+        }
+    </style>
+</head>
+
+<body class="bg-black">
+    <section class="bg-black ">
+        <div class="container px-5 py-12 mx-auto lg:px-20">
+            <div class="flex flex-col flex-wrap pb-6 mb-12 text-white ">
+                <h1 class="mb-12 text-3xl font-medium text-white">
+                    All of the charges between 2025-07-01 and 2025-08-01
+                </h1>
+            </div>
+            <div class="text-center">
+                <h2 class="mb-4 font-semibold tracking-widest text-white uppercase title-font text-center">
+                    <a href="/month/-1">-1</a> | <a href="/">default month</a> | <a href="/month/1">+1</a>
+                </h2>
+            </div>
+            <div class="text-center">
+                <h1 class="mb-4 font-semibold tracking-widest text-white uppercase title-font text-center">
+                    NO DATA FOUND
+                </h1>
+            </div>
+
+        </div>
+    </section>
+</body>
+
+</html>
