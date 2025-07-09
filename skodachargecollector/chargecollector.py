@@ -48,7 +48,7 @@ try:
     my_logger.debug("Connected to MariaDB")
 
 except mariadb.Error as e:
-    my_logger.error(f"Error connecting to MariaDB Platform: {e}")
+    my_logger.error("Error connecting to MariaDB Platform: %s", e)
     print(f"Error connecting to MariaDB Platform: {e}")
     import os
     import signal
@@ -79,17 +79,17 @@ async def find_next_unlinked_event():
         )
         row = cur.fetchone()
         if row:
-            my_logger.debug(f"Found unlinked charge: {row}")
+            my_logger.debug("Found unlinked charge: %s", row)
             return row
         else:
-            my_logger.debug("No unlinked charges found. ")
+            my_logger.debug("No unlinked charges found.")
     except mariadb.Error as e:
-        my_logger.error(f"Error fetching from database: {e}")
+        my_logger.error("Error fetching from database: %s", e)
         conn.rollback()
 
 
 async def start_charge_hour(hour, timestamp):
-    my_logger.debug(f"Starting charge hour for {hour} at {timestamp}...")
+    my_logger.debug("Starting charge hour for %s at %s...", hour, timestamp)
     try:
         cur.execute(
             "UPDATE skoda.charge_hours set start_at=? where log_timestamp=?",
@@ -98,12 +98,12 @@ async def start_charge_hour(hour, timestamp):
         conn.commit()
         my_logger.debug("Charge hour started successfully.")
     except mariadb.Error as e:
-        my_logger.error(f"Error starting charge hour: {e}")
+        my_logger.error("Error starting charge hour: %s", e)
         conn.rollback()
 
 
 async def is_charge_hour_started(hour):
-    my_logger.debug(f"Checking if charge hour {hour} has started...")
+    my_logger.debug("Checking if charge hour %s has started...", hour)
     try:
         cur.execute(
             "SELECT * FROM skoda.charge_hours WHERE log_timestamp = ? and start_at IS NOT NULL",
@@ -111,19 +111,19 @@ async def is_charge_hour_started(hour):
         )
         row = cur.fetchone()
         if row:
-            my_logger.debug(f"Charge hour {hour} is already started.")
+            my_logger.debug("Charge hour %s is already started.", hour)
             return True
         else:
-            my_logger.debug(f"Charge hour {hour} is not started, will update.")
+            my_logger.debug("Charge hour %s is not started, will update.", hour)
             return False
     except mariadb.Error as e:
-        my_logger.error(f"Error checking charge hour: {e}")
+        my_logger.error("Error checking charge hour: %s", e)
         conn.rollback()
         return False
 
 
 async def locate_charge_hour(hour):
-    my_logger.debug(f"Locating charge for hour: {hour}")
+    my_logger.debug("Locating charge for hour: %s", hour)
     try:
         cur.execute(
             "SELECT * FROM skoda.charge_hours where log_timestamp = ?",
@@ -131,23 +131,23 @@ async def locate_charge_hour(hour):
         )
         row = cur.fetchone()
         if row:
-            my_logger.debug(f"Found charge hour: {row[0]}")
+            my_logger.debug("Found charge hour: %s", row[0])
             return row[0]
         else:
             my_logger.debug("No charge hour found for this hour. Creating a new one.")
             await create_charge_event(hour)
             my_logger.debug("New charge hour created.")
-            my_logger.debug(f"Looping to locate charge event for hour: {hour}")
+            my_logger.debug("Looping to locate charge event for hour: %s", hour)
             return await locate_charge_hour(hour)
     except mariadb.Error as e:
-        my_logger.error(f"Error fetching charge event: {e}")
+        my_logger.error("Error fetching charge event: %s", e)
         conn.rollback()
         return None
 
 
 async def create_charge_event(hour):
     try:
-        my_logger.debug(f"Creating charge event for hour: {hour}")
+        my_logger.debug("Creating charge event for hour: %s", hour)
         cur.execute(
             "INSERT INTO skoda.charge_hours (log_timestamp) VALUES (?)",
             (f"{hour}:00:00",),
@@ -155,13 +155,13 @@ async def create_charge_event(hour):
         conn.commit()
         my_logger.debug("Charge event created successfully.")
     except mariadb.Error as e:
-        my_logger.error(f"Error creating charge event: {e}")
+        my_logger.error("Error creating charge event: %s", e)
         conn.rollback()
 
 
 async def link_charge_to_event(charge, event_id):
     try:
-        my_logger.debug(f"Linking charge {charge} to event {event_id}")
+        my_logger.debug("Linking charge %s to event %s", charge, event_id)
         cur.execute(
             "UPDATE skoda.charge_events SET charge_id = ? WHERE id = ?",
             (event_id, charge[0]),
@@ -170,7 +170,7 @@ async def link_charge_to_event(charge, event_id):
         my_logger.debug("Charge linked to event successfully.")
         return True
     except mariadb.Error as e:
-        my_logger.error(f"Error linking charge to event: {e}")
+        my_logger.error("Error linking charge to event: %s", e)
         conn.rollback()
         return False
 
@@ -188,7 +188,7 @@ async def keep_going_across_hours(lasthour, hour):
         conn.commit()
         my_logger.debug("Charge hour updated successfully.")
     except mariadb.Error as e:
-        my_logger.error(f"Error updating charge hour: {e}")
+        my_logger.error("Error updating charge hour: %s", e)
         conn.rollback()
     my_logger.debug("starting the next hour at 00:00")
     await start_charge_hour(hour, f"{hour}:00:00")
@@ -258,7 +258,7 @@ async def update_charge_with_event_data(charge_id, charge):
         my_logger.debug("Event updated with charge data successfully.")
         return True
     except mariadb.Error as e:
-        my_logger.error(f"Error updating event with charge data: {e}")
+        my_logger.error("Error updating event with charge data: %s", e)
         conn.rollback()
         return False
 
@@ -268,16 +268,18 @@ async def find_empty_amount():
     try:
         cur.execute("SELECT id FROM skoda.charge_hours WHERE amount IS NULL")
         row = cur.fetchone()
-        my_logger.debug(f"Found charge-hour with null amount")
-        return row[0]
+        my_logger.debug("Found charge-hour with null amount: %s", row)
+        row = row[0] if row else None
+        my_logger.debug("Returning charge hour ID: %s", row)
+        return row
     except mariadb.Error as e:
-        my_logger.error(f"Error fetching unlinked charge events: {e}")
+        my_logger.error("Error fetching unlinked charge events: %s", e)
         conn.rollback()
         return None
 
 
 async def calculate_and_update_charge_amount(charge_id):
-    my_logger.debug(f"Calculating charge amount for charge hour {charge_id}")
+    my_logger.debug("Calculating charge amount for charge hour %s", charge_id)
     try:
         cur.execute(
             "SELECT start_at, stop_at FROM skoda.charge_hours WHERE id = ?",
@@ -285,7 +287,7 @@ async def calculate_and_update_charge_amount(charge_id):
         )
         row = cur.fetchone()
         my_logger.debug(
-            f"Fetched start and stop times for charge hour {charge_id}: {row}"
+            "Fetched start and stop times for charge hour %s: %s", charge_id, row
         )
         if row and row[0] and row[1]:
             start_at = row[0]
@@ -314,7 +316,10 @@ async def calculate_and_update_charge_amount(charge_id):
             duration = (stop_time - start_time).total_seconds() / 3600  # in hours
             amount = duration * 10.5  # Assuming 10.5 kW charging rate
             my_logger.debug(
-                f"Calculated duration: {duration} hours, amount: {amount} for charge hour {charge_id}"
+                "Calculated duration: %s hours, amount: %s for charge hour %s",
+                duration,
+                amount,
+                charge_id,
             )
             # Update the charge hour with the calculated amount
             my_logger.debug("Updating charge hour with calculated amount")
@@ -329,12 +334,14 @@ async def calculate_and_update_charge_amount(charge_id):
             )
             conn.commit()
             my_logger.debug(
-                f"Charge amount updated to {amount} for charge hour {charge_id}"
+                "Charge amount updated to %s for charge hour %s",
+                amount,
+                charge_id,
             )
         else:
             my_logger.debug("No valid start or stop time found for charge hour.")
     except mariadb.Error as e:
-        my_logger.error(f"Error calculating charge amount: {e}")
+        my_logger.error("Error calculating charge amount: %s", e)
         conn.rollback()
 
 
@@ -347,7 +354,7 @@ async def chargerunner():
         charge = await find_next_unlinked_event()
         sleeptime = 60
         if charge:
-            my_logger.debug("Found unlinked charge event, processing... ")
+            my_logger.debug("Found unlinked charge event, processing...")
             my_logger.debug("Processing charge: %s", charge)
             hour = charge[1].strftime("%Y-%m-%d %H")
             charge_id = await locate_charge_hour(hour)
@@ -357,6 +364,7 @@ async def chargerunner():
             sleeptime = 0.001
         else:
             my_logger.debug("No charge found to process.")
+
         # Check if there are any charge hours with empty amounts
         empty_charge_id = await find_empty_amount()
 
@@ -370,8 +378,6 @@ async def chargerunner():
         else:
             my_logger.debug("No charge hours with empty amounts found.")
 
-            # sleeptime = await fetch_and_store_charge()
-            # Sleep for 10 seconds before the next iteration
         await asyncio.sleep(sleeptime if sleeptime else 10)
 
 
@@ -391,12 +397,12 @@ async def root():
     try:
         cur.execute("SELECT COUNT(*) FROM skoda.charge_hours")
         count = cur.fetchone()[0]
-        last_25_lines_joined += f"\n\nTotal logs in database: {count}\n"
+        last_25_lines_joined += "\n\nTotal logs in database: %s\n" % count
         cur.execute(
             "SELECT * FROM skoda.charge_hours order by log_timestamp desc limit 10"
         )
     except mariadb.Error as e:
-        my_logger.error(f"Error fetching from database: {e}")
+        my_logger.error("Error fetching from database: %s", e)
         conn.rollback()
         import os
         import signal
