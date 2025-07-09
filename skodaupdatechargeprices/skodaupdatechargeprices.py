@@ -160,7 +160,10 @@ async def update_one_charge_price():
     my_logger.debug("Fetching transport tariff...")
     tariff = await get_transport_tariff(charge_start)
     my_logger.debug("Fetched transport tariff: %.4f DKK/kWh", tariff)
-    total_price = (spot_price + tariff) * 1.25 * amount
+    total_price = (spot_price + tariff) * 1.25
+    my_logger.debug("Total price before multiplication: %.4f DKK/kWh", total_price)
+    total_price = total_price * amount
+    my_logger.debug("Total price calculated: %.4f DKK for %s kWh", total_price, amount)
     try:
         await loop.run_in_executor(
             None,
