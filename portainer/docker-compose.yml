@@ -4,8 +4,6 @@ services:
     image: ghcr.io/tn8or/skodaimporter:latest
     restart: always
     hostname: skodaimporter
-    ports:
-      - "2380:80"
     environment:
       SKODA_USER: ${SKODA_USER}
       SKODA_PASS: ${SKODA_PASS}
@@ -18,8 +16,6 @@ services:
     image: ghcr.io/tn8or/skodachargefinder:latest
     restart: always
     hostname: skodachargefinder
-    ports:
-      - "2480:80"
     environment:
       SKODA_USER: ${SKODA_USER}
       SKODA_PASS: ${SKODA_PASS}
@@ -32,8 +28,6 @@ services:
     image: ghcr.io/tn8or/skodachargecollector:latest
     restart: always
     hostname: skodachargecollector
-    ports:
-      - "2580:80"
     environment:
       SKODA_USER: ${SKODA_USER}
       SKODA_PASS: ${SKODA_PASS}
@@ -45,8 +39,6 @@ services:
     image: ghcr.io/tn8or/skodaupdatechargeprices:latest
     restart: always
     hostname: skodaupdatechargeprices
-    ports:
-      - "2680:80"
     environment:
       SKODA_USER: ${SKODA_USER}
       SKODA_PASS: ${SKODA_PASS}
@@ -58,8 +50,8 @@ services:
     image: ghcr.io/tn8or/skodachargefrontend:latest
     restart: always
     hostname: skodachargefrontend
-    ports:
-      - "2780:80"
+    networks:
+      - ix-nginx-proxy-manager_default
     environment:
       SKODA_USER: ${SKODA_USER}
       SKODA_PASS: ${SKODA_PASS}
@@ -67,3 +59,7 @@ services:
       MARIADB_USERNAME: ${MARIADB_USERNAME}
       MARIADB_PASSWORD: ${MARIADB_PASSWORD}
       MARIADB_HOSTNAME: ${MARIADB_HOSTNAME}
+
+networks:
+  ix-nginx-proxy-manager_default:
+    external: true
