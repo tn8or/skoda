@@ -194,6 +194,23 @@ async def keep_going_across_hours(lasthour, hour):
     await start_charge_hour(hour, f"{hour}:00:00")
 
 
+async def find_records_with_no_start_range():
+    my_logger.debug("Finding records with no value in start_range field")
+    try:
+        cur.execute(
+            "SELECT log_timestamp FROM skoda.charge_hours WHERE start_range IS NULL ORDER BY log_timestamp ASC LIMIT 1"
+        )
+        row = cur.fetchone()
+        if row:
+            my_logger.debug("Found record with no start_range: %s", row[0])
+            return row[0]
+        else:
+            my_logger.debug("No records found with no start_range.")
+    except mariadb.Error as e:
+        my_logger.error("Error fetching records: %s", e)
+        conn.rollback()
+
+
 async def update_charge_with_event_data(charge_id, charge):
     my_logger.debug("Updating event %s with charge data: %s", charge_id, charge)
     global lasthour
@@ -261,6 +278,25 @@ async def update_charge_with_event_data(charge_id, charge):
         my_logger.error("Error updating event with charge data: %s", e)
         conn.rollback()
         return False
+
+
+async def find_range_from_start(hour):
+    my_logger.debug("Finding range from charge initialization for hour %s", hour)
+    cur.execute(
+        "select log_message,log_timestamp from skoda.rawlogs where log_timestamp <= ? and log_message like '%charged_range%' order by log_timestamp desc limit 1",
+        (f"{hour}",),
+    )
+    row = cur.fetchone()
+    if row:
+        my_logger.debug("Found range from start: %s", row)
+        range_value = int(row[0].split("charged_range=")[1].split(",")[0].strip())
+        my_logger.debug("updating charge_hour %s with value: %s", hour, range_value)
+        cur.execute(
+            "UPDATE charge_hours SET start_range = ? WHERE log_timestamp = ?",
+            (range_value, hour),
+        )
+        conn.commit()
+        my_logger.debug("Charge hour updated with start range successfully.")
 
 
 async def find_empty_amount():
@@ -377,6 +413,15 @@ async def chargerunner():
             sleeptime = 0.001
         else:
             my_logger.debug("No charge hours with empty amounts found.")
+
+        # check if there are any charge hours with no start_range
+        my_logger.debug("Checking for charge hours with no start_range...")
+        no_start_range = await find_records_with_no_start_range()
+        if no_start_range:
+            my_logger.debug("Found charge hours with no start_range, updating...")
+            await find_range_from_start(no_start_range)
+            my_logger.debug("Charge hours updated with start_range successfully.")
+            sleeptime = 0.001
 
         await asyncio.sleep(sleeptime if sleeptime else 10)
 

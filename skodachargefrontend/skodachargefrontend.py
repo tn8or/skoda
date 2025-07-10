@@ -88,8 +88,9 @@ async def root(
             MAX(mileage) AS mileage,
             MAX(stop_at) AS stopped_at,
             position AS position,
-            MAX(charged_range)-MIN(charged_range) AS charged_range_diff,
+            MAX(charged_range)-MIN(start_range) AS charged_range_diff,
             max(soc) AS soc
+
 
         FROM skoda.charge_hours
         WHERE stop_at >= %s AND stop_at < %s
@@ -179,9 +180,9 @@ async def root(
                             <div class="divTableHead">KM</div>
                             <div class="divTableHead">Charge kWh</div>
                             <div class="divTableHead">Price (DKK)</div>
-                            <div class="divTableHead">Range when done</div>
-                            <div class="divTableHead">Charged range</div>
-                            <div class="divTableHead">Estimated range per kWh</div>
+                            <div class="divTableHead">Estimated range</div>
+                            <div class="divTableHead">Added range</div>
+                            <div class="divTableHead">km pr kWh</div>
                             <div class="divTableHead">SOC</div>
                             <div class="divTableHead">Position</div>
                         </div>
@@ -236,7 +237,7 @@ async def root(
                             <div class="divTableCell text-white">{amount:.2f} kWh</div>
                             <div class="divTableCell text-white">{price:.2f} DKK</div>
                             <div class="divTableCell text-white">{charged_range} KM</div>
-                            <div class="divTableCell text-white">{range_diff} KM</div>
+                            <div class="divTableCell text-white">{range_diff if range_diff > 0 else 0} KM</div>
                             <div class="divTableCell text-white">{range_per_kwh}</div>
                             <div class="divTableCell text-white">{soc}%</div>
                             <div class="divTableCell text-white">{position}</div>

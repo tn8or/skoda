@@ -77,7 +77,8 @@ CREATE TABLE `charge_hours` (
   `start_at` datetime DEFAULT NULL,
   `stop_at` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `time` (`log_timestamp`)
+  KEY `time` (`log_timestamp`),
+  KEY `frontend` (`stop_at`,`mileage`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!50003 SET @saved_cs_client      = @@character_set_client */ ;
@@ -123,4 +124,4 @@ CREATE TABLE `rawlogs` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*M!100616 SET NOTE_VERBOSITY=@OLD_NOTE_VERBOSITY */;
 
--- Dump completed on 2025-07-09 19:13:17
+-- Dump completed on 2025-07-10 11:55:05
