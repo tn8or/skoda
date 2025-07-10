@@ -6,7 +6,7 @@ import os
 import httpx
 import mariadb
 from commons import load_secret
-from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 
 my_logger = logging.getLogger("skodachargecollect")

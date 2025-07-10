@@ -68,7 +68,7 @@ async def ordinal(n):
 app = FastAPI()
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)
 async def root(
     year: int = Query(datetime.datetime.now().year, ge=2025, le=2027),
     month: int = Query(datetime.datetime.now().month, ge=1, le=12),
@@ -190,6 +190,7 @@ async def root(
     """
     # total mileage driven is all mileage from the first charge to the last charge
     totalmileage = rows[len(rows) - 1][3] - rows[1][3] if rows else 0
+
     for row in rows:
         amount = round(row[0] or 0, 2)
         price = round(row[1] or 0, 2)
@@ -200,6 +201,7 @@ async def root(
         position = row[5] if row[5] else "Unknown"
         range_diff = row[6] if row[6] else 0
         soc = row[7]
+        # calculated range per kWh
         range_per_kwh = (
             round(range_diff / amount, 2) if (amount > 0 and range_diff > 0) else 0
         )
@@ -240,7 +242,8 @@ async def root(
                             <div class="divTableCell text-white">{position}</div>
                         </div>
         """
-    avg_range_per_kwh = round((totalmileage) / total_amount, 2)
+    # Calculate average range per kWh - removing the first charge and the first mileage number
+    avg_range_per_kwh = round(totalmileage / (total_amount - rows[0][0]), 2)
 
     # Add totals row
     html += f"""
@@ -253,7 +256,8 @@ async def root(
                             <div class="divTableCell">{total_price:.2f} DKK</div>
                             <div class="divTableCell"></div>
                             <div class="divTableCell"></div>
-                            <div class="divTableCell">Estimated: {round(total_range_per_kwh / range_count,2) if total_range_per_kwh > 0 and range_count > 0 else 0}<br />Actual: {avg_range_per_kwh  if total_range_per_kwh > 0 and range_count > 0 else 0 }</div>
+                            <div class="divTableCell">Estimated: {round(total_range_per_kwh / range_count,2) if total_range_per_kwh > 0 and range_count > 0 else 0}
+                            <br />Actual: {avg_range_per_kwh  if total_range_per_kwh > 0 and range_count > 0 else 0 }</div>
                             <div class="divTableCell"></div>
                             <div class="divTableCell"></div>
                         </div>
