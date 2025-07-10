@@ -159,19 +159,10 @@ async def root(
     <body class="bg-black">
         <section class="bg-black">
             <div class="container px-5 py-12 mx-auto lg:px-20">
-                <div class="flex flex-col flex-wrap pb-6 mb-12 text-white">
+                <div class="flex flex-col flex-wrap text-white">
                     <h1 class="mb-12 text-3xl font-medium text-white">
                         Charge Summary for {year}-{month:02d}
                     </h1>
-                </div>
-                <div class="text-center mb-8">
-                    <form method="get" class="inline-block">
-                        <label for="year" class="text-white mr-2">Year:</label>
-                        <input type="number" id="year" name="year" value="{year}" min="2000" max="2100" class="rounded px-2 py-1 mr-4">
-                        <label for="month" class="text-white mr-2">Month:</label>
-                        <input type="number" id="month" name="month" value="{month}" min="1" max="12" class="rounded px-2 py-1 mr-4">
-                        <button type="submit" class="bg-blue-600 text-white px-4 py-1 rounded">Go</button>
-                    </form>
                 </div>
                 <div class="divTable">
                     <div class="divTableHeading">
