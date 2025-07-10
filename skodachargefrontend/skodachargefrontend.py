@@ -100,13 +100,7 @@ async def root(
     cur.execute(query, (start_date, end_date))
     rows = cur.fetchall()
 
-    # Calculate totals
-    total_amount = 0.0
-    total_price = 0.0
-    total_range_per_kwh = 0
-    range_count = 0
-
-    # Pagination logic
+    # Pagination logic (move this before the empty result check)
     prev_month = month - 1
     prev_year = year
     next_month = month + 1
@@ -117,6 +111,44 @@ async def root(
     if next_month > 12:
         next_month = 1
         next_year += 1
+
+    # Safeguard: handle empty result set
+    if not rows:
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Charge Summary for {year}-{month:02d}</title>
+            <link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
+        </head>
+        <body class="bg-black">
+            <section class="bg-black">
+                <div class="container px-5 py-12 mx-auto lg:px-20">
+                    <div class="flex flex-col flex-wrap pb-6 mb-12 text-white">
+                        <h1 class="mb-12 text-3xl font-medium text-white">
+                            Charge Summary for {year}-{month:02d}
+                        </h1>
+                        <p class="text-white text-xl">No charge data found for this month.</p>
+                    </div>
+                    <div class="text-center mt-8">
+                        <a href="/?year={prev_year}&month={prev_month}" class="text-blue-400 hover:underline">&laquo; Previous Month</a>
+                        <span class="mx-2 text-white">|</span>
+                        <a href="/" class="text-blue-400 hover:underline">Home</a>
+                        <span class="mx-2 text-white">|</span>
+                        <a href="/?year={next_year}&month={next_month}" class="text-blue-400 hover:underline">Next Month &raquo;</a>
+                    </div>
+                </div>
+            </section>
+        </body>
+        </html>
+        """
+        return HTMLResponse(content=html)
+
+    # Calculate totals
+    total_amount = 0.0
+    total_price = 0.0
+    total_range_per_kwh = 0
+    range_count = 0
 
     html = f"""
     <!DOCTYPE html>
