@@ -188,13 +188,14 @@ async def root(
                     </div>
                     <div class="divTableBody">
     """
-    minmileage = min(row[3] for row in rows) if rows else 0
-    maxmileage = max(row[3] for row in rows) if rows else 0
+    # total mileage driven is all mileage from the first charge to the last charge
+    totalmileage = rows[len(rows) - 1][3] - rows[1][3] if rows else 0
     for row in rows:
         amount = round(row[0] or 0, 2)
         price = round(row[1] or 0, 2)
         charged_range = round(row[2] or 0, 2)
         mileage = row[3]
+
         stopped_at = row[4]
         position = row[5] if row[5] else "Unknown"
         range_diff = row[6] if row[6] else 0
@@ -239,7 +240,7 @@ async def root(
                             <div class="divTableCell text-white">{position}</div>
                         </div>
         """
-    avg_range_per_kwh = round((maxmileage - minmileage) / total_amount, 2)
+    avg_range_per_kwh = round((totalmileage) / total_amount, 2)
 
     # Add totals row
     html += f"""
@@ -247,7 +248,7 @@ async def root(
                     <div class="divTableFoot">
                         <div class="divTableRow font-bold">
                             <div class="divTableCell">{len(rows)} charges</div>
-                            <div class="divTableCell">{maxmileage-minmileage} KM</div>
+                            <div class="divTableCell">{totalmileage} KM</div>
                             <div class="divTableCell">{total_amount:.2f} kWh</div>
                             <div class="divTableCell">{total_price:.2f} DKK</div>
                             <div class="divTableCell"></div>
