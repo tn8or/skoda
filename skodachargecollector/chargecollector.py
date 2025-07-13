@@ -372,7 +372,7 @@ async def chargerunner():
         charge = None
         my_logger.debug("Running chargecollector...")
         charge = await find_next_unlinked_event()
-        sleeptime = 60
+        sleeptime = 600
         if charge:
             my_logger.debug("Found unlinked charge event, processing...")
             my_logger.debug("Processing charge: %s", charge)
