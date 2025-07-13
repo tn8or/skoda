@@ -169,7 +169,7 @@ async def update_one_charge_price():
 
 
 async def priceupdate():
-    my_logger.debug("Starting main function...")
+    my_logger.debug("Starting main function... ")
     while True:
         my_logger.debug("Running main loop...")
         if await update_one_charge_price():
