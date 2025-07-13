@@ -22,6 +22,9 @@ services:
       - MARIADB_USERNAME
       - MARIADB_PASSWORD
       - MARIADB_HOSTNAME
+      - env
+      - GRAYLOG_HOST
+      - GRAYLOG_PORT
 
   chargefinder:
     build:
@@ -46,6 +49,9 @@ services:
       - MARIADB_USERNAME
       - MARIADB_PASSWORD
       - MARIADB_HOSTNAME
+      - env
+      - GRAYLOG_HOST
+      - GRAYLOG_PORT
 
   chargecollector:
     build:
@@ -70,6 +76,9 @@ services:
       - MARIADB_USERNAME
       - MARIADB_PASSWORD
       - MARIADB_HOSTNAME
+      - env
+      - GRAYLOG_HOST
+      - GRAYLOG_PORT
 
   skodaupdatechargeprices:
     build:
@@ -94,6 +103,10 @@ services:
       - MARIADB_USERNAME
       - MARIADB_PASSWORD
       - MARIADB_HOSTNAME
+      - env
+      - GRAYLOG_HOST
+      - GRAYLOG_PORT
+
   skodachargefrontend:
     build:
       context: ./skodachargefrontend
@@ -116,6 +129,9 @@ services:
       - MARIADB_USERNAME
       - MARIADB_PASSWORD
       - MARIADB_HOSTNAME
+      - env
+      - GRAYLOG_HOST
+      - GRAYLOG_PORT
 
   mariadb:
     image: mariadb:latest
@@ -158,3 +174,9 @@ secrets:
     file: ./secrets/MARIADB_PASSWORD
   MARIADB_HOSTNAME:
     file: ./secrets/MARIADB_HOSTNAME
+  env:
+    file: ./secrets/env
+  GRAYLOG_HOST:
+    file: ./secrets/GRAYLOG_HOST
+  GRAYLOG_PORT:
+    file: ./secrets/GRAYLOG_PORT

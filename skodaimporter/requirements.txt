@@ -35,6 +35,8 @@ frozenlist==1.6.0
     # via
     #   aiohttp
     #   aiosignal
+graypy==2.1.0
+    # via -r skodaimporter/requirements.in
 h11==0.14.0
     # via
     #   httpcore

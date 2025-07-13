@@ -2,3 +2,4 @@ mariadb
 fastapi
 uvicorn
 watchfiles
+graypy

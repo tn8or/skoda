@@ -5,25 +5,12 @@ import os
 
 import httpx
 import mariadb
-from commons import load_secret
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 
-my_logger = logging.getLogger("skodachargecollect")
-my_logger.setLevel(logging.DEBUG)
+from commons import get_logger, load_secret
 
-file_handler = logging.FileHandler("app.log")
-file_handler.setLevel(logging.DEBUG)
-
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.DEBUG)
-
-formatter = logging.Formatter("%(funcName)s - %(lineno)d - %(message)s")
-file_handler.setFormatter(formatter)
-console_handler.setFormatter(formatter)
-
-my_logger.addHandler(file_handler)
-my_logger.addHandler(console_handler)
+my_logger = get_logger("skodachargecollect")
 
 my_logger.warning("Starting the application...")
 

@@ -19,6 +19,8 @@ click==8.2.1
     # via uvicorn
 fastapi==0.115.14
     # via -r skodaupdatechargeprices/requirements.in
+graypy==2.1.0
+    # via -r skodaupdatechargeprices/requirements.in
 h11==0.16.0
     # via
     #   httpcore

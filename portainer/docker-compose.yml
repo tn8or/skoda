@@ -11,6 +11,9 @@ services:
       MARIADB_USERNAME: ${MARIADB_USERNAME}
       MARIADB_PASSWORD: ${MARIADB_PASSWORD}
       MARIADB_HOSTNAME: ${MARIADB_HOSTNAME}
+      GRAYLOG_HOST: ${GRAYLOG_HOST}
+      GRAYLOG_PORT: ${GRAYLOG_PORT}
+      env: ${env}
 
   chargefinder:
     image: ghcr.io/tn8or/skodachargefinder:latest
@@ -23,6 +26,9 @@ services:
       MARIADB_USERNAME: ${MARIADB_USERNAME}
       MARIADB_PASSWORD: ${MARIADB_PASSWORD}
       MARIADB_HOSTNAME: ${MARIADB_HOSTNAME}
+      GRAYLOG_HOST: ${GRAYLOG_HOST}
+      GRAYLOG_PORT: ${GRAYLOG_PORT}
+      env: ${env}
 
   chargecollector:
     image: ghcr.io/tn8or/skodachargecollector:latest
@@ -35,6 +41,10 @@ services:
       MARIADB_USERNAME: ${MARIADB_USERNAME}
       MARIADB_PASSWORD: ${MARIADB_PASSWORD}
       MARIADB_HOSTNAME: ${MARIADB_HOSTNAME}
+      GRAYLOG_HOST: ${GRAYLOG_HOST}
+      GRAYLOG_PORT: ${GRAYLOG_PORT}
+      env: ${env}
+
   updatechargeprices:
     image: ghcr.io/tn8or/skodaupdatechargeprices:latest
     restart: always
@@ -46,6 +56,10 @@ services:
       MARIADB_USERNAME: ${MARIADB_USERNAME}
       MARIADB_PASSWORD: ${MARIADB_PASSWORD}
       MARIADB_HOSTNAME: ${MARIADB_HOSTNAME}
+      GRAYLOG_HOST: ${GRAYLOG_HOST}
+      GRAYLOG_PORT: ${GRAYLOG_PORT}
+      env: ${env}
+
   skodachargefrontend:
     image: ghcr.io/tn8or/skodachargefrontend:latest
     restart: always
@@ -59,6 +73,9 @@ services:
       MARIADB_USERNAME: ${MARIADB_USERNAME}
       MARIADB_PASSWORD: ${MARIADB_PASSWORD}
       MARIADB_HOSTNAME: ${MARIADB_HOSTNAME}
+      GRAYLOG_HOST: ${GRAYLOG_HOST}
+      GRAYLOG_PORT: ${GRAYLOG_PORT}
+      env: ${env}
 
 networks:
   ix-nginx-proxy-manager_default:

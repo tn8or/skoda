@@ -6,32 +6,17 @@ import os
 import time
 
 import mariadb
-from commons import load_secret
 from fastapi import BackgroundTasks, FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
+
+from commons import get_logger, load_secret
 
 lastsoc = 0
 lastrange = 0
 lastlat = 0
 lastlon = 0
 
-my_logger = logging.getLogger("skodachargefindlogger")
-my_logger.setLevel(logging.DEBUG)
-
-file_handler = logging.FileHandler("app.log")
-file_handler.setLevel(logging.DEBUG)
-
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.DEBUG)
-
-# Optional: set a formatter
-formatter = logging.Formatter("%(funcName)s - %(lineno)d - %(message)s")
-file_handler.setFormatter(formatter)
-console_handler.setFormatter(formatter)
-
-# Add the handler to the logger
-my_logger.addHandler(file_handler)
-my_logger.addHandler(console_handler)
+my_logger = get_logger("skodachargefindlogger")
 
 my_logger.warning("Starting the application...")
 

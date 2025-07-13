@@ -4,3 +4,4 @@ mariadb
 myskoda==1.2.3
 uvicorn
 watchfiles
+graypy
