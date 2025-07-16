@@ -1,13 +1,11 @@
 import asyncio
 import json
-import logging
 import os
 import time
 
 import mariadb
 from aiohttp import ClientSession
-from commons import get_logger, load_secret
-from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from myskoda import MySkoda
 from myskoda.event import Event, EventType, ServiceEventTopic
@@ -17,11 +15,17 @@ from myskoda.models.info import Info
 from myskoda.models.position import PositionType
 from myskoda.models.status import Status
 
+from commons import get_logger, load_secret
+
 VIN = ""
 
 my_logger = get_logger("skodaimporter")
 
 my_logger.warning("Starting the application...")
+
+last_event_timeout = 4 * 60 * 60  # 4 hours
+last_event_received = time.time()
+
 
 try:
     my_logger.debug("Connecting to MariaDB...")
@@ -64,10 +68,12 @@ async def save_log_to_db(log_message):
 
 async def on_event(event: Event):
     # Convert the event to a JSON string
+    global last_event_received
     event_json = json.dumps(event, default=str)
     my_logger.debug(event_json)
     await save_log_to_db(event_json)
     print(event)
+    last_event_received = time.time()
     if event.type == EventType.SERVICE_EVENT:
         my_logger.debug("Received service event.")
         await save_log_to_db("Received service event.")
@@ -152,24 +158,38 @@ app = FastAPI()
 
 @app.get("/")
 async def root():
-    last_25_lines = read_last_n_lines("app.log", 15)
-    last_25_lines_joined = "".join(last_25_lines)
-    try:
-        cur.execute("SELECT COUNT(*) FROM skoda.rawlogs")
-        count = cur.fetchone()[0]
-        last_25_lines_joined += f"\n\nTotal logs in database: {count}\n"
-        cur.execute("SELECT * FROM skoda.rawlogs order by log_timestamp desc limit 10")
-    except mariadb.Error as e:
-        my_logger.error(f"Error fetching from database: {e}")
-        conn.rollback()
-        import os
-        import signal
+    global last_event_received
+    global last_event_timeout
+    elapsed = time.time() - last_event_received  # Time since last event
 
-        os.kill(os.getpid(), signal.SIGINT)
-    for log_timestamp, log_message in cur:
-        last_25_lines_joined += f"{log_timestamp} - {log_message}\n"
+    if elapsed > last_event_timeout:
+        my_logger.error("Last event more than 4 hours old, triggering restart")
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable")
+    else:
+        my_logger.info(
+            "Last event received %s seconds ago, within timeout.", int(elapsed)
+        )
 
-    return PlainTextResponse(last_25_lines_joined.encode("utf-8"))
+        last_25_lines = read_last_n_lines("app.log", 15)
+        last_25_lines_joined = "".join(last_25_lines)
+        try:
+            cur.execute("SELECT COUNT(*) FROM skoda.rawlogs")
+            count = cur.fetchone()[0]
+            last_25_lines_joined += f"\n\nTotal logs in database: {count}\n"
+            cur.execute(
+                "SELECT * FROM skoda.rawlogs order by log_timestamp desc limit 10"
+            )
+        except mariadb.Error as e:
+            my_logger.error(f"Error fetching from database: {e}")
+            conn.rollback()
+            import os
+            import signal
+
+            os.kill(os.getpid(), signal.SIGINT)
+        for log_timestamp, log_message in cur:
+            last_25_lines_joined += f"{log_timestamp} - {log_message}\n"
+
+        return PlainTextResponse(last_25_lines_joined.encode("utf-8"))
 
 
 background = asyncio.create_task(skodarunner())
