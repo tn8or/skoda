@@ -82,6 +82,12 @@ async def root(
         GROUP BY mileage
         ORDER BY mileage
     """
+    my_logger.debug(
+        "Executing query: %s with start_date: %s, end_date: %s",
+        query,
+        start_date,
+        end_date,
+    )
     cur.execute(query, (start_date, end_date))
     rows = cur.fetchall()
 
@@ -188,7 +194,7 @@ async def root(
                             <div class="divTableHead">KM</div>
                             <div class="divTableHead">Charge kWh</div>
                             <div class="divTableHead">Price (DKK)</div>
-                            <div class="divTableHead">Estimated range</div>
+                            <div class="divTableHead">Range @ 100%</div>
                             <div class="divTableHead">Added range</div>
                             <div class="divTableHead">km pr kWh</div>
                             <div class="divTableHead">SOC</div>
@@ -244,7 +250,7 @@ async def root(
                             <div class="divTableCell text-white">{mileage}</div>
                             <div class="divTableCell text-white">{amount:.2f} kWh</div>
                             <div class="divTableCell text-white">{price:.2f} DKK</div>
-                            <div class="divTableCell text-white">{charged_range} KM</div>
+                            <div class="divTableCell text-white">{int(charged_range/soc*100) if charged_range and soc else 0} KM</div>
                             <div class="divTableCell text-white">{range_diff if range_diff > 0 else 0} KM</div>
                             <div class="divTableCell text-white">{range_per_kwh}</div>
                             <div class="divTableCell text-white">{soc}%</div>
