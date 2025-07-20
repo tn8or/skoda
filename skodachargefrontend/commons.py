@@ -8,6 +8,8 @@ SECRET_PATHS = [
     "./secrets",
 ]
 
+SLEEPTIME = 60  # seconds
+
 
 def load_secret(secret):
     if secret in os.environ:

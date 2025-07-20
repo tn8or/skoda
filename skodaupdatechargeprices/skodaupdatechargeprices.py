@@ -8,7 +8,7 @@ import mariadb
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 
-from commons import get_logger, load_secret
+from commons import SLEEPTIME, get_logger, load_secret
 
 my_logger = get_logger("skodachargecollect")
 
@@ -176,7 +176,7 @@ async def priceupdate():
             my_logger.debug("Price updated successfully.")
             await asyncio.sleep(5)
         else:
-            await asyncio.sleep(600)
+            await asyncio.sleep(SLEEPTIME)
 
 
 background = asyncio.create_task(priceupdate())

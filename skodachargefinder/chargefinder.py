@@ -9,7 +9,7 @@ import mariadb
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.responses import PlainTextResponse
 
-from commons import get_logger, load_secret
+from commons import SLEEPTIME, get_logger, load_secret
 
 lastsoc = 0
 lastrange = 0
@@ -164,7 +164,7 @@ async def fetch_and_store_charge():
     new_charge_row = cur.fetchone()
     if not new_charge_row:
         my_logger.debug("No new charge found in rawlogs table.")
-        return 600
+        return SLEEPTIME
     my_logger.debug(f"Charge row fetched: {new_charge_row}")
 
     dt_str = new_charge_row[0].strftime("%Y-%m-%d %H:%M:%S")
@@ -224,7 +224,7 @@ async def fetch_and_store_charge():
             "%Y-%m-%d %H"
         ):
             my_logger.debug(
-                "Charge timestamp is not in the current hour, writing to DB"
+                "Charge timestamp is not in the current hour, writing to  DB"
             )
             await write_charge_to_db(new_charge)
             return 0.001
@@ -232,11 +232,11 @@ async def fetch_and_store_charge():
             my_logger.debug(
                 "Charge timestamp is in the current hour, not writing to DB"
             )
-            return 600
+            return SLEEPTIME
     else:
         my_logger.debug("No new charge to write, skipping...")
         # there were no new records, sleep for a while before checking again
-        return 600
+        return SLEEPTIME
 
 
 async def chargerunner():
@@ -246,7 +246,7 @@ async def chargerunner():
         my_logger.debug("Running chargerunner...")
         sleeptime = await fetch_and_store_charge()
         # Sleep for 10 seconds before the next iteration
-        await asyncio.sleep(sleeptime if sleeptime else 600)
+        await asyncio.sleep(sleeptime if sleeptime else SLEEPTIME)
 
 
 def read_last_n_lines(filename, n):

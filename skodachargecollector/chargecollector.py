@@ -9,7 +9,7 @@ import mariadb
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.responses import PlainTextResponse
 
-from commons import get_logger, load_secret
+from commons import SLEEPTIME, get_logger, load_secret
 
 HOME_LATITUDE = "55.547"
 HOME_LONGITUDE = "11.222"
@@ -367,12 +367,12 @@ async def calculate_and_update_charge_amount(charge_id):
 
 async def chargerunner():
     my_logger.debug("Starting main function...")
+    sleeptime = SLEEPTIME
 
     while True:
         charge = None
         my_logger.debug("Running chargecollector...")
         charge = await find_next_unlinked_event()
-        sleeptime = 600
         if charge:
             my_logger.debug("Found unlinked charge event, processing...")
             my_logger.debug("Processing charge: %s", charge)
