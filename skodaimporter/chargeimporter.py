@@ -23,7 +23,7 @@ my_logger = get_logger("skodaimporter")
 
 my_logger.warning("Starting the application...")
 
-last_event_timeout = 4 * 60 * 60  # 4 hours
+last_event_timeout = 1 * 60 * 60  # 4 hours
 last_event_received = time.time()
 
 
@@ -163,8 +163,15 @@ async def root():
     elapsed = time.time() - last_event_received  # Time since last event
 
     if elapsed > last_event_timeout:
-        my_logger.error("Last event more than 4 hours old, triggering restart")
-        raise HTTPException(status_code=503, detail="Service temporarily unavailable")
+        my_logger.error("Last event more than 1 hours old, triggering charge update")
+        charge_result = await myskoda.refresh_charging(VIN)
+        if not charge_result:
+            my_logger.error("Failed to refresh charging data. Triggering restart")
+            raise HTTPException(
+                status_code=503, detail="Service temporarily unavailable"
+            )
+        else:
+            my_logger.debug("Charging refreshed: %s", result)
     else:
         my_logger.info(
             "Last event received %s seconds ago, within timeout.", int(elapsed)
