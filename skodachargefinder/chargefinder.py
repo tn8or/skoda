@@ -219,15 +219,24 @@ async def fetch_and_store_charge():
 
     my_logger.debug(f"New charge fetched: {new_charge}")
     if last_timestamp == 0 or new_charge["timestamp"] != last_timestamp:
-        my_logger.debug(
-            "New charge is newer than the last stored charge, writing to DB..."
-        )
-        await write_charge_to_db(new_charge)
-        # quick turnaround since theres still records in the database
-        return 0.001
+        my_logger.debug("New charge is newer than the last stored charge...")
+        if new_charge["timestamp"].split(":")[0] != datetime.datetime.now().strftime(
+            "%Y-%m-%d %H"
+        ):
+            my_logger.debug(
+                "Charge timestamp is not in the current hour, writing to DB"
+            )
+            await write_charge_to_db(new_charge)
+            return 0.001
+        else:
+            my_logger.debug(
+                "Charge timestamp is in the current hour, not writing to DB"
+            )
+            return 600
     else:
         my_logger.debug("No new charge to write, skipping...")
         # there were no new records, sleep for a while before checking again
+        return 600
 
 
 async def chargerunner():
@@ -237,7 +246,7 @@ async def chargerunner():
         my_logger.debug("Running chargerunner...")
         sleeptime = await fetch_and_store_charge()
         # Sleep for 10 seconds before the next iteration
-        await asyncio.sleep(sleeptime if sleeptime else 10)
+        await asyncio.sleep(sleeptime if sleeptime else 600)
 
 
 def read_last_n_lines(filename, n):

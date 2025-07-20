@@ -16,7 +16,7 @@ lastrange = 0
 lastlat = 0
 lastlon = 0
 
-my_logger = get_logger("skodachargefindlogger")
+my_logger = get_logger("skodachargefrontendlogger")
 
 my_logger.warning("Starting the application...")
 
