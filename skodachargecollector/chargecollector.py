@@ -407,7 +407,7 @@ async def chargerunner():
             my_logger.debug("Charge hours updated with start_range successfully.")
             sleeptime = 0.001
 
-        await asyncio.sleep(sleeptime if sleeptime else 10)
+        await asyncio.sleep(sleeptime)
 
 
 def read_last_n_lines(filename, n):
