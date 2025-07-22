@@ -7,11 +7,11 @@ version: 2
 updates:
   - package-ecosystem: "pip" # See documentation for possible values
     directories:
-    - "/skodachargecollector"
-    - "/skodachargefinder"
-    - "/skodachargefrontend"
-    - "/skodaimporter"
-    - "/skodaupdatechargeprices"
+    - "/skodachargecollector/requirements.txt"
+    - "/skodachargefinder/requirements.txt"
+    - "/skodachargefrontend/requirements.txt"
+    - "/skodaimporter/requirements.txt"
+    - "/skodaupdatechargeprices/requirements.txt"
     schedule:
       interval: "weekly"
       
