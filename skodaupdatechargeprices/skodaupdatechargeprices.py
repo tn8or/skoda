@@ -29,6 +29,13 @@ async def read_last_n_lines(filename, n):
 app = FastAPI()
 
 
+@app.get("/update-charges")
+async def update_charges():
+    my_logger.debug("Received request to update charges from ")
+    await invoke_priceupdate()
+    return PlainTextResponse("Charge prices updated.".encode("utf-8"))
+
+
 @app.get("/")
 async def root():
     conn, cur = await db_connect(my_logger)
@@ -132,6 +139,7 @@ async def update_one_charge_price():
     my_logger.debug("Total price before multiplication: %.4f DKK/kWh", total_price)
     total_price = total_price * amount
     my_logger.debug("Total price calculated: %.4f DKK for %s kWh", total_price, amount)
+    my_logger.debug("Updating record in database...")
     try:
         await loop.run_in_executor(
             None,
@@ -152,12 +160,19 @@ async def update_one_charge_price():
 async def priceupdate():
     my_logger.debug("Starting main function... ")
     while True:
-        my_logger.debug("Running main loop...")
-        if await update_one_charge_price():
-            my_logger.debug("Price updated successfully.")
-            await asyncio.sleep(5)
-        else:
-            await asyncio.sleep(SLEEPTIME)
+        sleeptime = await invoke_priceupdate()
+        my_logger.debug("Sleeping for %s seconds...", sleeptime)
+        await asyncio.sleep(sleeptime)
+
+
+async def invoke_priceupdate():
+    my_logger.debug("Invoking price update...")
+    updateresult = await update_one_charge_price()
+    if updateresult:
+        my_logger.debug("Price updated successfully.")
+        return 0.011
+    else:
+        return SLEEPTIME
 
 
 background = asyncio.create_task(priceupdate())

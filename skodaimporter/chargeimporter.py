@@ -15,7 +15,7 @@ from myskoda.models.info import Info
 from myskoda.models.position import PositionType
 from myskoda.models.status import Status
 
-from commons import db_connect, get_logger, load_secret
+from commons import CHARGEFINDER_URL, db_connect, get_logger, load_secret, pull_api
 
 VIN = ""
 
@@ -53,6 +53,8 @@ async def on_event(event: Event):
     print(event)
     last_event_received = time.time()
     if event.type == EventType.SERVICE_EVENT:
+        api_result = pull_api(CHARGEFINDER_URL, my_logger)
+        my_logger.debug(f"API result: {api_result}")
         my_logger.debug("Received service event.")
         await save_log_to_db("Received service event.")
         if event.topic == ServiceEventTopic.CHARGING:

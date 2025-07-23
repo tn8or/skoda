@@ -3,3 +3,4 @@ mariadb
 uvicorn
 watchfiles
 graypy
+httpx

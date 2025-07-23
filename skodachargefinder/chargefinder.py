@@ -9,7 +9,7 @@ import mariadb
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.responses import PlainTextResponse
 
-from commons import SLEEPTIME, db_connect, get_logger
+from commons import CHARGECOLLECTOR_URL, SLEEPTIME, db_connect, get_logger, pull_api
 
 lastsoc = 0
 lastrange = 0
@@ -222,12 +222,30 @@ async def fetch_and_store_charge():
         return SLEEPTIME
 
 
+async def invoke_chargefinder():
+    my_logger.debug("Invoking chargefinder...")
+    try:
+        result = await fetch_and_store_charge()
+        my_logger.debug(f"Result from fetch_and_store_charge: {result}")
+        if result != SLEEPTIME:
+            my_logger.debug(
+                "Result was different from SLEEPTIME, invoking chargecollector via HTTP request..."
+            )
+            api_result = await pull_api(CHARGECOLLECTOR_URL, my_logger)
+            my_logger.debug(f"API result: {api_result}")
+        return result
+
+    except Exception as e:
+        my_logger.error(f"Error in invoke_chargefinder: {e}")
+        raise e
+
+
 async def chargerunner():
     my_logger.debug("Starting main function...")
 
     while True:
         my_logger.debug("Running chargerunner...")
-        sleeptime = await fetch_and_store_charge()
+        sleeptime = await invoke_chargefinder()
         # Sleep for 10 seconds before the next iteration
         await asyncio.sleep(sleeptime if sleeptime else SLEEPTIME)
 
@@ -239,6 +257,15 @@ def read_last_n_lines(filename, n):
 
 
 app = FastAPI()
+
+my_logger.debug("FastAPI app initialized.")
+
+
+@app.get("/find-charges")
+async def find_charges():
+    my_logger.debug("Received request to find charges... ")
+    await invoke_chargefinder()
+    return PlainTextResponse("Charge finder started.", status_code=200)
 
 
 @app.get("/")

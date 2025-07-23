@@ -1,5 +1,6 @@
 import os
 
+import httpx
 import mariadb
 
 # paths to look for secrets
@@ -11,6 +12,25 @@ SECRET_PATHS = [
 ]
 
 SLEEPTIME = 60  # seconds
+
+CHARGEFINDER_URL = "http://chargefinder/find-charges"
+CHARGECOLLECTOR_URL = "http://chargecollector/collect-charges"
+UPDATECHARGES_URL = "http://skodaupdatechargeprices/update-charges"
+
+
+async def pull_api(url, my_logger):
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            return response.json()
+    except httpx.RequestError as e:
+        my_logger.error(f"Request error: {e}")
+    except httpx.HTTPStatusError as e:
+        my_logger.error(f"HTTP error: {e}")
+    except Exception as e:
+        my_logger.error(f"An unexpected error occurred: {e}")
+    return None
 
 
 def load_secret(secret):

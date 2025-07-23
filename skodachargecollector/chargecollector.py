@@ -1,15 +1,11 @@
 import asyncio
 import datetime
-import json
-import logging
-import os
-import time
 
 import mariadb
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.responses import PlainTextResponse
 
-from commons import SLEEPTIME, db_connect, get_logger
+from commons import SLEEPTIME, UPDATECHARGES_URL, db_connect, get_logger, pull_api
 
 HOME_LATITUDE = "55.547"
 HOME_LONGITUDE = "11.222"
@@ -183,6 +179,7 @@ async def find_records_with_no_start_range():
 
 async def update_charge_with_event_data(charge_id, charge):
     my_logger.debug("Updating event %s with charge data: %s", charge_id, charge)
+    conn, cur = await db_connect(my_logger)
     global lasthour
     global stillgoing
     try:
@@ -355,47 +352,60 @@ async def calculate_and_update_charge_amount(charge_id):
         conn.rollback()
 
 
+async def invoke_charge_collector():
+    charge = None
+    sleeptime = SLEEPTIME
+    my_logger.debug("Running chargecollector...")
+    charge = await find_next_unlinked_event()
+    if charge:
+        my_logger.debug("Found unlinked charge event, processing...")
+        my_logger.debug("Processing charge: %s", charge)
+        hour = charge[1].strftime("%Y-%m-%d %H")
+        charge_id = await locate_charge_hour(hour)
+        my_logger.debug("Charge ID located: %s", charge_id)
+        await update_charges_with_event(charge)
+        my_logger.debug("Charge processed successfully.")
+        sleeptime = 0.001
+    else:
+        my_logger.debug("No charge found to process.")
+
+    # Check if there are any charge hours with empty amounts
+    empty_charge_id = await find_empty_amount()
+
+    if empty_charge_id:
+        my_logger.debug("Found charge hour with empty amount, calculating amount...")
+        sleeptime = await calculate_and_update_charge_amount(empty_charge_id)
+        my_logger.debug("Charge amount calculated and updated successfully.")
+    else:
+        my_logger.debug("No charge hours with empty amounts found.")
+
+    # check if there are any charge hours with no start_range
+    my_logger.debug("Checking for charge hours with no start_range...")
+    no_start_range = await find_records_with_no_start_range()
+    if no_start_range:
+        my_logger.debug("Found charge hours with no start_range, updating...")
+        await find_range_from_start(no_start_range)
+        my_logger.debug("Charge hours updated with start_range successfully.")
+        sleeptime = 0.001
+
+    if sleeptime != SLEEPTIME:
+        my_logger.debug(
+            "SLEEPTIME was changed to %s, invoking update-charges via HTTP request...",
+            sleeptime,
+        )
+        api_result = await pull_api(UPDATECHARGES_URL, my_logger)
+        my_logger.debug("API result: %s", api_result)
+
+    return sleeptime
+
+
 async def chargerunner():
     my_logger.debug("Starting main function...")
     sleeptime = SLEEPTIME
 
     while True:
-        charge = None
-        my_logger.debug("Running chargecollector...")
-        charge = await find_next_unlinked_event()
-        if charge:
-            my_logger.debug("Found unlinked charge event, processing...")
-            my_logger.debug("Processing charge: %s", charge)
-            hour = charge[1].strftime("%Y-%m-%d %H")
-            charge_id = await locate_charge_hour(hour)
-            my_logger.debug("Charge ID located: %s", charge_id)
-            await update_charges_with_event(charge)
-            my_logger.debug("Charge processed successfully.")
-            sleeptime = 0.001
-        else:
-            my_logger.debug("No charge found to process.")
-
-        # Check if there are any charge hours with empty amounts
-        empty_charge_id = await find_empty_amount()
-
-        if empty_charge_id:
-            my_logger.debug(
-                "Found charge hour with empty amount, calculating amount..."
-            )
-            sleeptime = await calculate_and_update_charge_amount(empty_charge_id)
-            my_logger.debug("Charge amount calculated and updated successfully.")
-        else:
-            my_logger.debug("No charge hours with empty amounts found.")
-
-        # check if there are any charge hours with no start_range
-        my_logger.debug("Checking for charge hours with no start_range...")
-        no_start_range = await find_records_with_no_start_range()
-        if no_start_range:
-            my_logger.debug("Found charge hours with no start_range, updating...")
-            await find_range_from_start(no_start_range)
-            my_logger.debug("Charge hours updated with start_range successfully.")
-            sleeptime = 0.001
-
+        sleeptime = await invoke_charge_collector()
+        my_logger.debug("Sleeping for %s seconds...", sleeptime)
         await asyncio.sleep(sleeptime)
 
 
@@ -406,6 +416,13 @@ def read_last_n_lines(filename, n):
 
 
 app = FastAPI()
+
+
+@app.get("/collect-charges")
+async def collect_charges():
+    my_logger.debug("Received request to collect charges ")
+    await invoke_charge_collector()
+    return PlainTextResponse("Charge collection initiated.".encode("utf-8"))
 
 
 @app.get("/")
