@@ -23,7 +23,7 @@ my_logger = get_logger("skodaimporter")
 
 my_logger.warning("Starting the application...")
 
-last_event_timeout = 1 * 60 * 60  # 4 hours
+last_event_timeout = 4 * 60 * 60  # 4 hours
 last_event_received = time.time()
 
 
