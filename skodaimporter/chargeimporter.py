@@ -27,10 +27,8 @@ last_event_timeout = 1 * 60 * 60  # 4 hours
 last_event_received = time.time()
 
 
-cur = db_connect()
-
-
 async def save_log_to_db(log_message):
+    conn, cur = await db_connect(my_logger)
     try:
         cur.execute(
             "INSERT INTO rawlogs (log_message, log_timestamp) VALUES (?, NOW())",
@@ -138,6 +136,7 @@ app = FastAPI()
 
 @app.get("/")
 async def root():
+    conn, cur = await db_connect(my_logger)
     global last_event_received
     global last_event_timeout
     elapsed = time.time() - last_event_received  # Time since last event

@@ -9,7 +9,7 @@ import mariadb
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.responses import PlainTextResponse
 
-from commons import SLEEPTIME, get_logger, load_secret
+from commons import SLEEPTIME, db_connect, get_logger
 
 lastsoc = 0
 lastrange = 0
@@ -20,32 +20,9 @@ my_logger = get_logger("skodachargefindlogger")
 
 my_logger.warning("Starting the application...")
 
-try:
-    my_logger.debug("Connecting to MariaDB...")
-    conn = mariadb.connect(
-        user=load_secret("MARIADB_USERNAME"),
-        password=load_secret("MARIADB_PASSWORD"),
-        host=load_secret("MARIADB_HOSTNAME"),
-        port=3306,
-        database=load_secret("MARIADB_DATABASE"),
-    )
-    conn.auto_reconnect = True
-    my_logger.debug("Connected to MariaDB")
-    cur = conn.cursor()
-    return conn, cur
-
-except mariadb.Error as e:
-    my_logger.error(f"Error connecting to MariaDB Platform: {e}")
-    print(f"Error connecting to MariaDB Platform: {e}")
-    import os
-    import signal
-
-    os.kill(os.getpid(), signal.SIGINT)
-
-cur = conn.cursor()
-
 
 async def read_last_charge():
+    conn, cur = await db_connect(my_logger)
     try:
         my_logger.debug("Fetching last charge from database...")
         cur.execute(
@@ -65,6 +42,7 @@ async def read_last_charge():
 
 
 async def write_charge_to_db(charge):
+    conn, cur = await db_connect(my_logger)
     try:
         my_logger.debug(f"Writing charge to database: {charge}")
         cur.execute(
@@ -88,6 +66,7 @@ async def write_charge_to_db(charge):
 
 async def find_vehicle_mileage(hour):
     my_logger.debug(f"Finding vehicle mileage for {hour}:00")
+    conn, cur = await db_connect(my_logger)
     try:
         cur.execute(
             "SELECT log_message FROM skoda.rawlogs WHERE log_timestamp >= ? AND log_message LIKE '%mileage:%' ORDER BY log_timestamp ASC LIMIT 1",
@@ -112,6 +91,7 @@ async def find_vehicle_mileage(hour):
 
 async def find_vehicle_position(hour):
     my_logger.debug(f"Finding vehicle position for {hour}:00")
+    conn, cur = await db_connect(my_logger)
     try:
         cur.execute(
             "SELECT log_message FROM skoda.rawlogs WHERE log_timestamp >= ? AND log_timestamp < ? AND log_message LIKE 'Vehicle positions%' ORDER BY log_timestamp DESC LIMIT 1",
@@ -148,6 +128,7 @@ async def fetch_and_store_charge():
     global lastlat
     global lastlon
     my_logger.debug("Fetching and storing charge...")
+    conn, cur = await db_connect(my_logger)
     last_stored_charge = await read_last_charge()
     if last_stored_charge:
         last_timestamp = last_stored_charge[1]
@@ -262,6 +243,7 @@ app = FastAPI()
 
 @app.get("/")
 async def root():
+    conn, cur = await db_connect(my_logger)
     last_25_lines = read_last_n_lines("app.log", 15)
     last_25_lines_joined = "".join(last_25_lines)
     try:

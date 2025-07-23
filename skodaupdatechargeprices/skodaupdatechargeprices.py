@@ -8,32 +8,11 @@ import mariadb
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 
-from commons import SLEEPTIME, get_logger, load_secret
+from commons import SLEEPTIME, db_connect, get_logger, load_secret
 
 my_logger = get_logger("skodachargecollect")
 
 my_logger.warning("Starting the application...")
-
-try:
-    my_logger.debug("Connecting to MariaDB...")
-    conn = mariadb.connect(
-        user=load_secret("MARIADB_USERNAME"),
-        password=load_secret("MARIADB_PASSWORD"),
-        host=load_secret("MARIADB_HOSTNAME"),
-        port=3306,
-        database=load_secret("MARIADB_DATABASE"),
-    )
-    conn.auto_reconnect = True
-    my_logger.debug("Connected to MariaDB")
-
-except mariadb.Error as e:
-    my_logger.error("Error connecting to MariaDB Platform: %s", e)
-    print(f"Error connecting to MariaDB Platform: {e}")
-    import signal
-
-    os.kill(os.getpid(), signal.SIGINT)
-
-cur = conn.cursor()
 
 
 async def read_last_n_lines(filename, n):
@@ -52,6 +31,7 @@ app = FastAPI()
 
 @app.get("/")
 async def root():
+    conn, cur = await db_connect(my_logger)
     last_25_lines = await read_last_n_lines("app.log", 15)
     last_25_lines_joined = "".join(last_25_lines)
     try:
@@ -119,6 +99,7 @@ async def fetch_spot_price(dt: datetime.datetime) -> float:
 
 
 async def update_one_charge_price():
+    conn, cur = await db_connect(my_logger)
     my_logger.debug("Updating one charge price...")
     loop = asyncio.get_event_loop()
     my_logger.debug("Acquiring database connection...")

@@ -9,7 +9,7 @@ import mariadb
 from fastapi import BackgroundTasks, FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 
-from commons import get_logger, load_secret
+from commons import db_connect, get_logger, load_secret
 
 lastsoc = 0
 lastrange = 0
@@ -19,28 +19,6 @@ lastlon = 0
 my_logger = get_logger("skodachargefrontendlogger")
 
 my_logger.warning("Starting the application...")
-
-try:
-    my_logger.debug("Connecting to MariaDB...")
-    conn = mariadb.connect(
-        user=load_secret("MARIADB_USERNAME"),
-        password=load_secret("MARIADB_PASSWORD"),
-        host=load_secret("MARIADB_HOSTNAME"),
-        port=3306,
-        database=load_secret("MARIADB_DATABASE"),
-    )
-    conn.auto_reconnect = True
-    my_logger.debug("Connected to MariaDB")
-
-except mariadb.Error as e:
-    my_logger.error(f"Error connecting to MariaDB Platform: {e}")
-    print(f"Error connecting to MariaDB Platform: {e}")
-    import os
-    import signal
-
-    os.kill(os.getpid(), signal.SIGINT)
-
-cur = conn.cursor()
 
 
 async def ordinal(n):
@@ -58,6 +36,7 @@ async def root(
     year: int = Query(datetime.datetime.now().year, ge=2025, le=2027),
     month: int = Query(datetime.datetime.now().month, ge=1, le=12),
 ):
+    conn, cur = await db_connect(my_logger)
     # Calculate first and last day of the month
     start_date = datetime.date(year, month, 1)
     if month == 12:
