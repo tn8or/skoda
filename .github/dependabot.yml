@@ -6,7 +6,12 @@
 version: 2
 updates:
   - package-ecosystem: "pip" # See documentation for possible values
-    directory: "/" # Location of package manifests
+    directories:
+    - "/skodachargecollector/requirements.txt"
+    - "/skodachargefinder/requirements.txt"
+    - "/skodachargefrontend/requirements.txt"
+    - "/skodaimporter/requirements.txt"
+    - "/skodaupdatechargeprices/requirements.txt"
     schedule:
       interval: "weekly"
       
