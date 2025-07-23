@@ -31,6 +31,8 @@ try:
     )
     conn.auto_reconnect = True
     my_logger.debug("Connected to MariaDB")
+    cur = conn.cursor()
+    return conn, cur
 
 except mariadb.Error as e:
     my_logger.error(f"Error connecting to MariaDB Platform: {e}")

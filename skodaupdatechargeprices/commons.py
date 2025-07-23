@@ -1,5 +1,7 @@
 import os
 
+import mariadb
+
 # paths to look for secrets
 SECRET_PATHS = [
     "/etc/secrets/tronity",
@@ -20,6 +22,26 @@ def load_secret(secret):
             if os.path.exists(filepath):
                 content = open(filepath).read().rstrip("\n")
                 return content
+
+
+async def db_connect(my_logger):
+    try:
+        my_logger.debug("Connecting to MariaDB...")
+        conn = mariadb.connect(
+            user=load_secret("MARIADB_USERNAME"),
+            password=load_secret("MARIADB_PASSWORD"),
+            host=load_secret("MARIADB_HOSTNAME"),
+            port=3306,
+            database=load_secret("MARIADB_DATABASE"),
+        )
+        conn.auto_reconnect = True
+        my_logger.debug("Connected to MariaDB")
+        cur = conn.cursor()
+        return conn, cur
+
+    except mariadb.Error as e:
+        my_logger.error(f"Error connecting to MariaDB Platform: {e}")
+        return False
 
 
 def get_logger(name):

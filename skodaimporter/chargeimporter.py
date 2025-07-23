@@ -15,7 +15,7 @@ from myskoda.models.info import Info
 from myskoda.models.position import PositionType
 from myskoda.models.status import Status
 
-from commons import get_logger, load_secret
+from commons import db_connect, get_logger, load_secret
 
 VIN = ""
 
@@ -27,27 +27,7 @@ last_event_timeout = 1 * 60 * 60  # 4 hours
 last_event_received = time.time()
 
 
-try:
-    my_logger.debug("Connecting to MariaDB...")
-    conn = mariadb.connect(
-        user=load_secret("MARIADB_USERNAME"),
-        password=load_secret("MARIADB_PASSWORD"),
-        host=load_secret("MARIADB_HOSTNAME"),
-        port=3306,
-        database=load_secret("MARIADB_DATABASE"),
-    )
-    conn.auto_reconnect = True
-    my_logger.debug("Connected to MariaDB")
-
-except mariadb.Error as e:
-    my_logger.error(f"Error connecting to MariaDB Platform: {e}")
-    print(f"Error connecting to MariaDB Platform: {e}")
-    import os
-    import signal
-
-    os.kill(os.getpid(), signal.SIGINT)
-
-cur = conn.cursor()
+cur = db_connect()
 
 
 async def save_log_to_db(log_message):

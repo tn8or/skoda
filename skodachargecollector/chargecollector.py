@@ -9,7 +9,7 @@ import mariadb
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.responses import PlainTextResponse
 
-from commons import SLEEPTIME, get_logger, load_secret
+from commons import SLEEPTIME, db_connect, get_logger
 
 HOME_LATITUDE = "55.547"
 HOME_LONGITUDE = "11.222"
@@ -18,28 +18,6 @@ stillgoing = False
 
 my_logger = get_logger("skodachargecollector")
 my_logger.warning("Starting the application...")
-
-try:
-    my_logger.debug("Connecting to MariaDB...")
-    conn = mariadb.connect(
-        user=load_secret("MARIADB_USERNAME"),
-        password=load_secret("MARIADB_PASSWORD"),
-        host=load_secret("MARIADB_HOSTNAME"),
-        port=3306,
-        database=load_secret("MARIADB_DATABASE"),
-    )
-    conn.auto_reconnect = True
-    my_logger.debug("Connected to MariaDB")
-
-except mariadb.Error as e:
-    my_logger.error("Error connecting to MariaDB Platform: %s", e)
-    print(f"Error connecting to MariaDB Platform: {e}")
-    import os
-    import signal
-
-    os.kill(os.getpid(), signal.SIGINT)
-
-cur = conn.cursor()
 
 
 async def update_charges_with_event(charge):
@@ -56,6 +34,7 @@ async def update_charges_with_event(charge):
 
 
 async def find_next_unlinked_event():
+    conn, cur = await db_connect(my_logger)
     my_logger.debug("Finding next unlinked event...")
     try:
         cur.execute(
@@ -73,6 +52,7 @@ async def find_next_unlinked_event():
 
 
 async def start_charge_hour(hour, timestamp):
+    conn, cur = await db_connect(my_logger)
     my_logger.debug("Starting charge hour for %s at %s...", hour, timestamp)
     try:
         cur.execute(
@@ -87,6 +67,7 @@ async def start_charge_hour(hour, timestamp):
 
 
 async def is_charge_hour_started(hour):
+    conn, cur = await db_connect(my_logger)
     my_logger.debug("Checking if charge hour %s has started...", hour)
     try:
         cur.execute(
@@ -107,6 +88,7 @@ async def is_charge_hour_started(hour):
 
 
 async def locate_charge_hour(hour):
+    conn, cur = await db_connect(my_logger)
     my_logger.debug("Locating charge for hour: %s", hour)
     try:
         cur.execute(
@@ -130,6 +112,7 @@ async def locate_charge_hour(hour):
 
 
 async def create_charge_event(hour):
+    conn, cur = await db_connect(my_logger)
     try:
         my_logger.debug("Creating charge event for hour: %s", hour)
         cur.execute(
@@ -144,6 +127,7 @@ async def create_charge_event(hour):
 
 
 async def link_charge_to_event(charge, event_id):
+    conn, cur = await db_connect(my_logger)
     try:
         my_logger.debug("Linking charge %s to event %s", charge, event_id)
         cur.execute(
@@ -161,6 +145,7 @@ async def link_charge_to_event(charge, event_id):
 
 async def keep_going_across_hours(lasthour, hour):
     my_logger.debug("Keeping charge hour across hours from %s to %s", lasthour, hour)
+    conn, cur = await db_connect(my_logger)
     try:
         my_logger.debug(
             "Updating charge hour %s to stop at %s:59:59", lasthour, lasthour
@@ -180,6 +165,7 @@ async def keep_going_across_hours(lasthour, hour):
 
 async def find_records_with_no_start_range():
     my_logger.debug("Finding records with no value in start_range field")
+    conn, cur = await db_connect(my_logger)
     try:
         cur.execute(
             "SELECT log_timestamp FROM skoda.charge_hours WHERE start_range IS NULL ORDER BY log_timestamp ASC LIMIT 1"
@@ -266,6 +252,7 @@ async def update_charge_with_event_data(charge_id, charge):
 
 async def find_range_from_start(hour):
     my_logger.debug("Finding range from charge initialization for hour %s", hour)
+    conn, cur = await db_connect(my_logger)
     cur.execute(
         "select log_message,log_timestamp from skoda.rawlogs where log_timestamp <= ? and log_message like '%charged_range%' order by log_timestamp desc limit 1",
         (f"{hour}",),
@@ -285,6 +272,7 @@ async def find_range_from_start(hour):
 
 async def find_empty_amount():
     my_logger.debug("Finding charge hours with empty amounts")
+    conn, cur = await db_connect(my_logger)
     try:
         cur.execute("SELECT id FROM skoda.charge_hours WHERE amount IS NULL")
         row = cur.fetchone()
@@ -299,6 +287,7 @@ async def find_empty_amount():
 
 
 async def calculate_and_update_charge_amount(charge_id):
+    conn, cur = await db_connect(my_logger)
     my_logger.debug("Calculating charge amount for charge hour %s", charge_id)
     try:
         cur.execute(
@@ -360,6 +349,7 @@ async def calculate_and_update_charge_amount(charge_id):
             )
         else:
             my_logger.debug("No valid start or stop time found for charge hour.")
+            return 30
     except mariadb.Error as e:
         my_logger.error("Error calculating charge amount: %s", e)
         conn.rollback()
@@ -392,9 +382,8 @@ async def chargerunner():
             my_logger.debug(
                 "Found charge hour with empty amount, calculating amount..."
             )
-            await calculate_and_update_charge_amount(empty_charge_id)
+            sleeptime = await calculate_and_update_charge_amount(empty_charge_id)
             my_logger.debug("Charge amount calculated and updated successfully.")
-            sleeptime = 0.001
         else:
             my_logger.debug("No charge hours with empty amounts found.")
 
@@ -421,6 +410,7 @@ app = FastAPI()
 
 @app.get("/")
 async def root():
+    conn, cur = await db_connect(my_logger)
     last_25_lines = read_last_n_lines("app.log", 15)
     last_25_lines_joined = "".join(last_25_lines)
     try:
