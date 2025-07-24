@@ -238,6 +238,7 @@ async def invoke_chargefinder():
             my_logger.debug("No data updated - check if we need to invoke API for further processing")
             if DATAPROCESSED == 1:
                 my_logger.debug("We have processed data - reset the DATAPROCESSED variable, and invoke API call")
+                global DATAPROCESSED
                 DATAPROCESSED = 0
                 api_result = await pull_api(CHARGECOLLECTOR_URL, my_logger)
                 my_logger.debug(f"API result: {api_result}")
