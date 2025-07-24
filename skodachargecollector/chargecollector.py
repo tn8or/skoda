@@ -11,6 +11,7 @@ HOME_LATITUDE = "55.547"
 HOME_LONGITUDE = "11.222"
 lasthour = ""
 stillgoing = False
+DATAPROCESSED = 0
 
 my_logger = get_logger("skodachargecollector")
 my_logger.warning("Starting the application...")
@@ -390,11 +391,20 @@ async def invoke_charge_collector():
 
     if sleeptime != SLEEPTIME:
         my_logger.debug(
-            "SLEEPTIME was changed to %s, invoking update-charges via HTTP request...",
+            "SLEEPTIME was changed to %s, flipping DATAPROCESSED to 1 to invoke API call",
             sleeptime,
         )
-        api_result = await pull_api(UPDATECHARGES_URL, my_logger)
-        my_logger.debug("API result: %s", api_result)
+        global DATAPROCESSED
+        DATAPROCESSED=1
+    else:
+        my_logger.debug("Not processing data - see if we need to invoke the next step in the chain via API call")
+        if DATAPROCESSED==1:
+            my_logger.debug("DATAPROCESSED is 1, invoke API call to chargeprices and reset the flag")
+            global DATAPROCESSED
+            DATAPROCESSED=0
+            api_result = await pull_api(UPDATECHARGES_URL, my_logger)
+            my_logger.debug("API result: %s", api_result)
+
 
     return sleeptime
 
