@@ -15,6 +15,7 @@ lastsoc = 0
 lastrange = 0
 lastlat = 0
 lastlon = 0
+DATAPROCESSED = 0
 
 my_logger = get_logger("skodachargefindlogger")
 
@@ -229,10 +230,18 @@ async def invoke_chargefinder():
         my_logger.debug(f"Result from fetch_and_store_charge: {result}")
         if result != SLEEPTIME:
             my_logger.debug(
-                "Result was different from SLEEPTIME, invoking chargecollector via HTTP request..."
+                "Result was different from SLEEPTIME, flipping DATAPROCESSED to 1 to invoke the update api call afterwards"
             )
-            api_result = await pull_api(CHARGECOLLECTOR_URL, my_logger)
-            my_logger.debug(f"API result: {api_result}")
+            global DATAPROCESSED
+            DATAPROCESSED=1
+        else:
+            my_logger.debug("No data updated - check if we need to invoke API for further processing")
+            if DATAPROCESSED == 1:
+                my_logger.debug("We have processed data - reset the DATAPROCESSED variable, and invoke API call")
+                DATAPROCESSED = 0
+                api_result = await pull_api(CHARGECOLLECTOR_URL, my_logger)
+                my_logger.debug(f"API result: {api_result}")
+
         return result
 
     except Exception as e:
