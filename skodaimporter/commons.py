@@ -11,7 +11,7 @@ SECRET_PATHS = [
     "./secrets",
 ]
 
-SLEEPTIME = 600  # seconds
+SLEEPTIME = 1800  # seconds
 
 CHARGEFINDER_URL = "http://chargefinder/find-charges"
 CHARGECOLLECTOR_URL = "http://chargecollector/collect-charges"
