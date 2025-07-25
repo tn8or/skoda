@@ -137,7 +137,10 @@ async def update_one_charge_price():
     my_logger.debug("Fetched transport tariff: %.4f DKK/kWh", tariff)
     total_price = (spot_price + tariff) * 1.25
     my_logger.debug("Total price before multiplication: %.4f DKK/kWh", total_price)
-    total_price = total_price * amount if amount else total_price = 0
+    if amount:
+        total_price = total_price * amount
+    else:
+        total_price = 0
     my_logger.debug("Total price calculated: %.4f DKK for %s kWh", total_price, amount)
     my_logger.debug("Updating record in database...")
     try:

@@ -4,26 +4,21 @@ import json
 import logging
 import os
 import time
-
 import mariadb
 from fastapi import BackgroundTasks, FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
-
 from commons import db_connect, get_logger, load_secret
-
 lastsoc = 0
 lastrange = 0
 lastlat = 0
 lastlon = 0
-
-my_logger = get_logger("skodachargefrontendlogger")
-
-my_logger.warning("Starting the application...")
+my_logger = get_logger('skodachargefrontendlogger')
+my_logger.warning('Starting the application...')
 
 
 async def ordinal(n):
     if 11 <= n % 100 <= 13:
-        return f"{n}th"
+        return f'{n}th'
     else:
         return f"{n}{['th', 'st', 'nd', 'rd', 'th'][min(n % 10, 4)]}"
 
@@ -31,19 +26,15 @@ async def ordinal(n):
 app = FastAPI()
 
 
-@app.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)
-async def root(
-    year: int = Query(datetime.datetime.now().year, ge=2025, le=2027),
-    month: int = Query(datetime.datetime.now().month, ge=1, le=12),
-):
+@app.api_route('/', methods=['GET', 'HEAD'], response_class=HTMLResponse)
+async def root(year: int=Query(datetime.datetime.now().year, ge=2025, le=
+    2027), month: int=Query(datetime.datetime.now().month, ge=1, le=12)):
     conn, cur = await db_connect(my_logger)
-    # Calculate first and last day of the month
     start_date = datetime.date(year, month, 1)
     if month == 12:
         end_date = datetime.date(year + 1, 1, 1)
     else:
         end_date = datetime.date(year, month + 1, 1)
-
     query = """
         SELECT
             SUM(amount) AS amount,
@@ -61,16 +52,10 @@ async def root(
         GROUP BY mileage
         ORDER BY mileage
     """
-    my_logger.debug(
-        "Executing query: %s with start_date: %s, end_date: %s",
-        query,
-        start_date,
-        end_date,
-    )
+    my_logger.debug('Executing query: %s with start_date: %s, end_date: %s',
+        query, start_date, end_date)
     cur.execute(query, (start_date, end_date))
     rows = cur.fetchall()
-
-    # Pagination logic (move this before the empty result check)
     prev_month = month - 1
     prev_year = year
     next_month = month + 1
@@ -81,8 +66,6 @@ async def root(
     if next_month > 12:
         next_month = 1
         next_year += 1
-
-    # Safeguard: handle empty result set
     if not rows:
         html = f"""
         <!DOCTYPE html>
@@ -113,13 +96,10 @@ async def root(
         </html>
         """
         return HTMLResponse(content=html)
-
-    # Calculate totals
     total_amount = 0.0
     total_price = 0.0
     total_range_per_kwh = 0
     range_count = 0
-
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -182,34 +162,26 @@ async def root(
                     </div>
                     <div class="divTableBody">
     """
-    # total mileage driven is all mileage from the first charge to the last charge
     totalmileage = rows[len(rows) - 1][3] - rows[1][3] if rows else 0
-
     for row in rows:
         amount = round(row[0] or 0, 2)
         price = round(row[1] or 0, 2)
         charged_range = round(row[2] or 0, 2)
         mileage = row[3]
-
         stopped_at = row[4]
-        position = row[5] if row[5] else "Unknown"
+        position = row[5] if row[5] else 'Unknown'
         range_diff = row[6] if row[6] else 0
         soc = row[7]
-        # calculated range per kWh
-        range_per_kwh = (
-            round(range_diff / amount, 2) if (amount > 0 and range_diff > 0) else 0
-        )
+        range_per_kwh = round(range_diff / amount, 2
+            ) if amount > 0 and range_diff > 0 else 0
         if range_per_kwh > 0:
             total_range_per_kwh = total_range_per_kwh + range_per_kwh
             range_count += 1
-
-        if position != "home":
-            price = 0.0  # If not at home, we don't charge for the electricity
+        if position != 'home':
+            price = 0.0
         total_amount += amount
         total_price += price
-
-        # Format stopped_at to only show the hour (HH:MM)
-        stopped_at_str = ""
+        stopped_at_str = ''
         if stopped_at:
             try:
                 if isinstance(stopped_at, str):
@@ -217,29 +189,26 @@ async def root(
                 else:
                     dt = stopped_at
                 day = await ordinal(dt.day)
-                stopped_at_str = dt.strftime("%a ") + day + " @ " + dt.strftime("%H:%M")
+                stopped_at_str = dt.strftime('%a '
+                    ) + day + ' @ ' + dt.strftime('%H:%M')
             except Exception:
                 stopped_at_str = str(stopped_at)
         else:
-            stopped_at_str = ""
-
+            stopped_at_str = ''
         html += f"""
                         <div class="divTableRow">
                             <div class="divTableCell text-white">{stopped_at_str}</div>
                             <div class="divTableCell text-white">{mileage}</div>
                             <div class="divTableCell text-white">{amount:.2f} kWh</div>
                             <div class="divTableCell text-white">{price:.2f} DKK</div>
-                            <div class="divTableCell text-white">{int(charged_range/soc*100) if charged_range and soc else 0} KM</div>
+                            <div class="divTableCell text-white">{int(charged_range / soc * 100) if charged_range and soc else 0} KM</div>
                             <div class="divTableCell text-white">{range_diff if range_diff > 0 else 0} KM</div>
                             <div class="divTableCell text-white">{range_per_kwh}</div>
                             <div class="divTableCell text-white">{soc}%</div>
                             <div class="divTableCell text-white">{position}</div>
                         </div>
         """
-    # Calculate average range per kWh - removing the first charge and the first mileage number
     avg_range_per_kwh = round(totalmileage / (total_amount - rows[0][0]), 2)
-
-    # Add totals row
     html += f"""
                     </div>
                     <div class="divTableFoot">
@@ -250,8 +219,8 @@ async def root(
                             <div class="divTableCell">{total_price:.2f} DKK</div>
                             <div class="divTableCell"></div>
                             <div class="divTableCell"></div>
-                            <div class="divTableCell">Estimated: {round(total_range_per_kwh / range_count,2) if total_range_per_kwh > 0 and range_count > 0 else 0}
-                            <br />Actual: {avg_range_per_kwh  if total_range_per_kwh > 0 and range_count > 0 else 0 }</div>
+                            <div class="divTableCell">Estimated: {round(total_range_per_kwh / range_count, 2) if total_range_per_kwh > 0 and range_count > 0 else 0}
+                            <br />Actual: {avg_range_per_kwh if total_range_per_kwh > 0 and range_count > 0 else 0}</div>
                             <div class="divTableCell"></div>
                             <div class="divTableCell"></div>
                         </div>

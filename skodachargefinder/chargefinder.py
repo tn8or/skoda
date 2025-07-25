@@ -16,9 +16,7 @@ lastrange = 0
 lastlat = 0
 lastlon = 0
 DATAPROCESSED = 0
-
 my_logger = get_logger("skodachargefindlogger")
-
 my_logger.warning("Starting the application...")
 
 
@@ -31,13 +29,13 @@ async def read_last_charge():
         )
         row = cur.fetchone()
         if row:
-            my_logger.debug(f"Last charge found: {row}")
+            my_logger.debug("Last charge found: %s", row)
             return row
         else:
             my_logger.debug("No charges found in the database.")
             return None
     except mariadb.Error as e:
-        my_logger.error(f"Error fetching last charge: {e}")
+        my_logger.error("Error fetching last charge: %s", e)
         conn.rollback()
         return None
 
@@ -45,7 +43,7 @@ async def read_last_charge():
 async def write_charge_to_db(charge):
     conn, cur = await db_connect(my_logger)
     try:
-        my_logger.debug(f"Writing charge to database: {charge}")
+        my_logger.debug("Writing charge to database: %s", charge)
         cur.execute(
             "INSERT INTO skoda.charge_events (event_timestamp, pos_lat, pos_lon, charged_range, mileage, event_type, soc) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
@@ -61,12 +59,12 @@ async def write_charge_to_db(charge):
         conn.commit()
         my_logger.debug("Charge written to database successfully.")
     except mariadb.Error as e:
-        my_logger.error(f"Error writing charge to database: {e}")
+        my_logger.error("Error writing charge to database: %s", e)
         conn.rollback()
 
 
 async def find_vehicle_mileage(hour):
-    my_logger.debug(f"Finding vehicle mileage for {hour}:00")
+    my_logger.debug("Finding vehicle mileage for %s:00", hour)
     conn, cur = await db_connect(my_logger)
     try:
         cur.execute(
@@ -76,30 +74,25 @@ async def find_vehicle_mileage(hour):
         row = cur.fetchone()
         if row:
             my_logger.debug("Vehicle mileage found: %s", row)
-            mileage = (
-                row[0].split(":")[1].strip()
-            )  # Assuming mileage is in the third column
+            mileage = row[0].split(":")[1].strip()
             my_logger.debug("Returning mileage %s", mileage)
             return mileage
         else:
             my_logger.debug("No vehicle mileage found.")
             return None
     except mariadb.Error as e:
-        my_logger.error(f"Error fetching vehicle mileage: {e}")
+        my_logger.error("Error fetching vehicle mileage: %s", e)
         conn.rollback()
         return None
 
 
 async def find_vehicle_position(hour):
-    my_logger.debug(f"Finding vehicle position for {hour}:00")
+    my_logger.debug("Finding vehicle position for %s:00", hour)
     conn, cur = await db_connect(my_logger)
     try:
         cur.execute(
             "SELECT log_message FROM skoda.rawlogs WHERE log_timestamp >= ? AND log_timestamp < ? AND log_message LIKE 'Vehicle positions%' ORDER BY log_timestamp DESC LIMIT 1",
-            (
-                f"{hour}:00:00",
-                f"{hour}:59:59",
-            ),
+            (f"{hour}:00:00", f"{hour}:59:59"),
         )
         row = cur.fetchone()
         if row:
@@ -113,12 +106,12 @@ async def find_vehicle_position(hour):
             position.append(lat)
             position.append(lon)
             my_logger.debug("Returning position %s", position)
-            return position  # Assuming the position is in the third column
+            return position
         else:
             my_logger.debug("No vehicle position found.")
             return None
     except mariadb.Error as e:
-        my_logger.error(f"Error fetching vehicle position: {e}")
+        my_logger.error("Error fetching vehicle position: %s", e)
         conn.rollback()
         return None
 
@@ -133,32 +126,26 @@ async def fetch_and_store_charge():
     last_stored_charge = await read_last_charge()
     if last_stored_charge:
         last_timestamp = last_stored_charge[1]
-        my_logger.debug(f"Last stored charge timestamp: {last_timestamp}")
+        my_logger.debug("Last stored charge timestamp: %s", last_timestamp)
     else:
         last_timestamp = 0
-
-    # see if newer charges are available in the rawlogs table
-    query = (
-        "SELECT * FROM skoda.rawlogs WHERE log_timestamp > ? and "
-        "(log_message like '%ChargingState.CHARGING%' or log_message like '%ChargingState.READY_FOR_CHARGING%' or log_message like '%OperationName.STOP_CHARGING%') "
-        "order by log_timestamp ASC LIMIT 1"
+    query = "SELECT * FROM skoda.rawlogs WHERE log_timestamp > ? and (log_message like '%ChargingState.CHARGING%' or log_message like '%ChargingState.READY_FOR_CHARGING%' or log_message like '%OperationName.STOP_CHARGING%') order by log_timestamp ASC LIMIT 1"
+    my_logger.debug(
+        "Executing query: %s with last_timestamp: %s", query, last_timestamp
     )
-    my_logger.debug(f"Executing query: {query} with last_timestamp: {last_timestamp}")
     cur.execute(query, (last_timestamp,))
     new_charge_row = cur.fetchone()
     if not new_charge_row:
         my_logger.debug("No new charge found in rawlogs table.")
         return SLEEPTIME
-    my_logger.debug(f"Charge row fetched: {new_charge_row}")
-
+    my_logger.debug("Charge row fetched: %s", new_charge_row)
     dt_str = new_charge_row[0].strftime("%Y-%m-%d %H:%M:%S")
-    my_logger.debug(f"Charge timestamp: {dt_str}")
+    my_logger.debug("Charge timestamp: %s", dt_str)
     dt_str_split = dt_str.split(":")
     position = await find_vehicle_position(dt_str_split[0])
-    my_logger.debug(f"Vehicle position found: {position}")
+    my_logger.debug("Vehicle position found: %s", position)
     mileage = await find_vehicle_mileage(dt_str_split[0])
-    my_logger.debug(f"Vehicle mileage found: {mileage}")
-
+    my_logger.debug("Vehicle mileage found: %s", mileage)
     if "READY_FOR_CHARGING" in new_charge_row[1]:
         operation = "stop"
         my_logger.debug("Charge operation is 'stop'")
@@ -171,26 +158,22 @@ async def fetch_and_store_charge():
     else:
         my_logger.error("No charge operation foudn in row")
         await time.sleep(10)
-
     if "soc=" in new_charge_row[1]:
         soc = new_charge_row[1].split("soc=")[1].split(",")[0]
         lastsoc = soc
     else:
         soc = lastsoc
-
     if "charged_range=" in new_charge_row[1]:
         charged_range = new_charge_row[1].split("charged_range=")[1].split(",")[0]
         lastrange = charged_range
     else:
         charged_range = lastrange
-
     if not position:
         my_logger.debug("No position found, using last known position.")
         position = [lastlat, lastlon]
     else:
         lastlat = position[0]
         lastlon = position[1]
-
     new_charge = {
         "timestamp": dt_str,
         "pos_lat": position[0] if position else None,
@@ -200,8 +183,7 @@ async def fetch_and_store_charge():
         "event_type": operation,
         "soc": soc,
     }
-
-    my_logger.debug(f"New charge fetched: {new_charge}")
+    my_logger.debug("New charge fetched: %s", new_charge)
     if last_timestamp == 0 or new_charge["timestamp"] != last_timestamp:
         my_logger.debug("New charge is newer than the last stored charge...")
         if new_charge["timestamp"].split(":")[0] != datetime.datetime.now().strftime(
@@ -219,44 +201,42 @@ async def fetch_and_store_charge():
             return SLEEPTIME
     else:
         my_logger.debug("No new charge to write, skipping...")
-        # there were no new records, sleep for a while before checking again
         return SLEEPTIME
 
 
 async def invoke_chargefinder():
     my_logger.debug("Invoking chargefinder...")
+    global DATAPROCESSED
     try:
         result = await fetch_and_store_charge()
-        my_logger.debug(f"Result from fetch_and_store_charge: {result}")
+        my_logger.debug("Result from fetch_and_store_charge: %s", result)
         if result != SLEEPTIME:
             my_logger.debug(
                 "Result was different from SLEEPTIME, flipping DATAPROCESSED to 1 to invoke the update api call afterwards"
             )
-            global DATAPROCESSED
-            DATAPROCESSED=1
+            DATAPROCESSED = 1
         else:
-            my_logger.debug("No data updated - check if we need to invoke API for further processing")
+            my_logger.debug(
+                "No data updated - check if we need to invoke API for further processing"
+            )
             if DATAPROCESSED == 1:
-                my_logger.debug("We have processed data - reset the DATAPROCESSED variable, and invoke API call")
-                global DATAPROCESSED
+                my_logger.debug(
+                    "We have processed data - reset the DATAPROCESSED variable, and invoke API call"
+                )
                 DATAPROCESSED = 0
                 api_result = await pull_api(CHARGECOLLECTOR_URL, my_logger)
-                my_logger.debug(f"API result: {api_result}")
-
+                my_logger.debug("API result: %s", api_result)
         return result
-
     except Exception as e:
-        my_logger.error(f"Error in invoke_chargefinder: {e}")
+        my_logger.error("Error in invoke_chargefinder: %s", e)
         raise e
 
 
 async def chargerunner():
     my_logger.debug("Starting main function...")
-
     while True:
         my_logger.debug("Running chargerunner...")
         sleeptime = await invoke_chargefinder()
-        # Sleep for 10 seconds before the next iteration
         await asyncio.sleep(sleeptime if sleeptime else SLEEPTIME)
 
 
@@ -267,7 +247,6 @@ def read_last_n_lines(filename, n):
 
 
 app = FastAPI()
-
 my_logger.debug("FastAPI app initialized.")
 
 
@@ -291,7 +270,7 @@ async def root():
             "SELECT * FROM skoda.charge_events order by event_timestamp desc limit 10"
         )
     except mariadb.Error as e:
-        my_logger.error(f"Error fetching from database: {e}")
+        my_logger.error("Error fetching from database: %s", e)
         conn.rollback()
         import os
         import signal
@@ -299,7 +278,6 @@ async def root():
         os.kill(os.getpid(), signal.SIGINT)
     rows = cur.fetchall()
     last_25_lines_joined += "\n".join([str(row) for row in rows])
-
     return PlainTextResponse(last_25_lines_joined.encode("utf-8"))
 
 

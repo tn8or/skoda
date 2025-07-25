@@ -12,7 +12,6 @@ HOME_LONGITUDE = "11.222"
 lasthour = ""
 stillgoing = False
 DATAPROCESSED = 0
-
 my_logger = get_logger("skodachargecollector")
 my_logger.warning("Starting the application...")
 
@@ -213,31 +212,16 @@ async def update_charge_with_event_data(charge_id, charge):
             check_if_charge_hour_started = await is_charge_hour_started(hour)
             if not check_if_charge_hour_started:
                 await start_charge_hour(hour, charge[1])
-
             stillgoing = False
             stop_at = charge[1]
-
             cur.execute(
                 "UPDATE skoda.charge_hours SET position = ?, charged_range = ?, mileage = ?, soc = ?, stop_at = ? WHERE id = ? and stop_at is NULL",
-                (
-                    position,
-                    charge[3],
-                    charge[4],
-                    charge[7],
-                    stop_at,
-                    charge_id,
-                ),
+                (position, charge[3], charge[4], charge[7], stop_at, charge_id),
             )
         else:
             cur.execute(
                 "UPDATE skoda.charge_hours SET position = ?, charged_range = ?, mileage = ?, soc = ? WHERE id = ?",
-                (
-                    position,
-                    charge[3],
-                    charge[4],
-                    charge[7],
-                    charge_id,
-                ),
+                (position, charge[3], charge[4], charge[7], charge_id),
             )
         conn.commit()
         my_logger.debug("Event updated with charge data successfully.")
@@ -305,7 +289,6 @@ async def calculate_and_update_charge_amount(charge_id):
                 stop_at,
                 charge_id,
             )
-            # Use as-is if already datetime, else parse
             if isinstance(start_at, datetime.datetime):
                 start_time = start_at
             else:
@@ -320,15 +303,14 @@ async def calculate_and_update_charge_amount(charge_id):
                 stop_time,
                 charge_id,
             )
-            duration = (stop_time - start_time).total_seconds() / 3600  # in hours
-            amount = duration * 10.5  # Assuming 10.5 kW charging rate
+            duration = (stop_time - start_time).total_seconds() / 3600
+            amount = duration * 10.5
             my_logger.debug(
                 "Calculated duration: %s hours, amount: %s for charge hour %s",
                 duration,
                 amount,
                 charge_id,
             )
-            # Update the charge hour with the calculated amount
             my_logger.debug("Updating charge hour with calculated amount")
             my_logger.debug(
                 "Executing SQL update for charge hour %s with amount %s",
@@ -341,9 +323,7 @@ async def calculate_and_update_charge_amount(charge_id):
             )
             conn.commit()
             my_logger.debug(
-                "Charge amount updated to %s for charge hour %s",
-                amount,
-                charge_id,
+                "Charge amount updated to %s for charge hour %s", amount, charge_id
             )
         else:
             my_logger.debug("No valid start or stop time found for charge hour.")
@@ -356,6 +336,7 @@ async def calculate_and_update_charge_amount(charge_id):
 async def invoke_charge_collector():
     charge = None
     sleeptime = SLEEPTIME
+    global DATAPROCESSED
     my_logger.debug("Running chargecollector...")
     charge = await find_next_unlinked_event()
     if charge:
@@ -369,18 +350,13 @@ async def invoke_charge_collector():
         sleeptime = 0.001
     else:
         my_logger.debug("No charge found to process.")
-
-    # Check if there are any charge hours with empty amounts
     empty_charge_id = await find_empty_amount()
-
     if empty_charge_id:
         my_logger.debug("Found charge hour with empty amount, calculating amount...")
         sleeptime = await calculate_and_update_charge_amount(empty_charge_id)
         my_logger.debug("Charge amount calculated and updated successfully.")
     else:
         my_logger.debug("No charge hours with empty amounts found.")
-
-    # check if there are any charge hours with no start_range
     my_logger.debug("Checking for charge hours with no start_range...")
     no_start_range = await find_records_with_no_start_range()
     if no_start_range:
@@ -388,31 +364,29 @@ async def invoke_charge_collector():
         await find_range_from_start(no_start_range)
         my_logger.debug("Charge hours updated with start_range successfully.")
         sleeptime = 0.001
-
     if sleeptime != SLEEPTIME:
         my_logger.debug(
             "SLEEPTIME was changed to %s, flipping DATAPROCESSED to 1 to invoke API call",
             sleeptime,
         )
-        global DATAPROCESSED
-        DATAPROCESSED=1
+        DATAPROCESSED = 1
     else:
-        my_logger.debug("Not processing data - see if we need to invoke the next step in the chain via API call")
-        if DATAPROCESSED==1:
-            my_logger.debug("DATAPROCESSED is 1, invoke API call to chargeprices and reset the flag")
-            global DATAPROCESSED
-            DATAPROCESSED=0
+        my_logger.debug(
+            "Not processing data - see if we need to invoke the next step in the chain via API call"
+        )
+        if DATAPROCESSED == 1:
+            my_logger.debug(
+                "DATAPROCESSED is 1, invoke API call to chargeprices and reset the flag"
+            )
+            DATAPROCESSED = 0
             api_result = await pull_api(UPDATECHARGES_URL, my_logger)
             my_logger.debug("API result: %s", api_result)
-
-
     return sleeptime
 
 
 async def chargerunner():
     my_logger.debug("Starting main function...")
     sleeptime = SLEEPTIME
-
     while True:
         sleeptime = await invoke_charge_collector()
         my_logger.debug("Sleeping for %s seconds...", sleeptime)
@@ -456,7 +430,6 @@ async def root():
         os.kill(os.getpid(), signal.SIGINT)
     rows = cur.fetchall()
     last_25_lines_joined += "\n".join([str(row) for row in rows])
-
     return PlainTextResponse(last_25_lines_joined.encode("utf-8"))
 
 
