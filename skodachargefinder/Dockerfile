@@ -49,7 +49,7 @@ RUN echo "Running tests with coverage requirements..." && \
     --cov=chargefinder \
     --cov-report=term-missing \
     --cov-report=html:/tmp/coverage \
-    --cov-fail-under=35 \
+    --cov-fail-under=50 \
     --strict-markers \
     --disable-warnings
 
