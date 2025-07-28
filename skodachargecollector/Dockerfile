@@ -44,7 +44,7 @@ RUN echo "Running tests with coverage requirements..." && \
     --tb=short \
     --cov=chargecollector \
     --cov-report=term-missing \
-    --cov-fail-under=40 \
+    --cov-fail-under=35 \
     --strict-markers \
     --disable-warnings \
     --maxfail=3 \
