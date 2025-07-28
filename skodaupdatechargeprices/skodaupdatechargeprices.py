@@ -113,12 +113,12 @@ async def update_one_charge_price():
     await loop.run_in_executor(
         None,
         cur.execute,
-        "SELECT id, log_timestamp, amount FROM skoda.charge_hours WHERE price IS NULL ORDER BY log_timestamp ASC LIMIT 1",
+        "SELECT id, log_timestamp, amount FROM skoda.charge_hours WHERE price IS NULL AND amount IS NOT NULL ORDER BY log_timestamp ASC LIMIT 1",
     )
     row = cur.fetchone()
     my_logger.debug("Fetched row: %s", row)
     if not row:
-        my_logger.info("No records to update.")
+        my_logger.info("No records with valid amounts to update.")
         return
     record_id, charge_start, amount = row
     my_logger.debug("Record ID: %s, Charge Start: %s", record_id, charge_start)
@@ -137,10 +137,7 @@ async def update_one_charge_price():
     my_logger.debug("Fetched transport tariff: %.4f DKK/kWh", tariff)
     total_price = (spot_price + tariff) * 1.25
     my_logger.debug("Total price before multiplication: %.4f DKK/kWh", total_price)
-    if amount:
-        total_price = total_price * amount
-    else:
-        total_price = 0
+    total_price = total_price * amount
     my_logger.debug("Total price calculated: %.4f DKK for %s kWh", total_price, amount)
     my_logger.debug("Updating record in database...")
     try:
