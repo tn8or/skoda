@@ -352,7 +352,12 @@ async def update_charge_with_event_data(charge_id, charge):
             my_logger.debug("Charge event is a stop event")
             check_if_charge_hour_started = await is_charge_hour_started(hour)
             if not check_if_charge_hour_started:
-                await start_charge_hour(hour, charge[1])
+                # If we get a stop event without a start, set start_at to beginning of hour
+                my_logger.warning(
+                    "Stop event found without corresponding start event for hour %s, setting start_at to beginning of hour", 
+                    hour
+                )
+                await start_charge_hour(hour, f"{hour}:00:00")
             _collector_state.still_going = False
             stop_at = charge[1]
             cur.execute(
@@ -516,7 +521,16 @@ async def calculate_and_update_charge_amount(charge_id: str) -> Optional[int]:
 
             # Calculate duration in hours and amount at 10.5 per hour
             duration = (stop_time - start_time).total_seconds() / 3600
-            amount = duration * 10.5
+            
+            # Check for negative duration (indicates data issue)
+            if duration < 0:
+                my_logger.warning(
+                    "Negative duration detected for charge hour %s: start=%s, stop=%s, duration=%s hours. Setting amount to 0.",
+                    charge_id, start_time, stop_time, duration
+                )
+                amount = 0.0
+            else:
+                amount = duration * 10.5
 
             my_logger.debug(
                 "Calculated duration: %s hours, amount: %s for charge hour %s",
@@ -827,6 +841,13 @@ async def process_all_start_ranges_endpoint():
     return PlainTextResponse(result.encode("utf-8"))
 
 
+@app.get("/fix-negative-amounts")
+async def fix_negative_amounts_endpoint():
+    """Fix all charge hours with negative amounts by recalculating them."""
+    result = await fix_negative_amounts()
+    return PlainTextResponse(result.encode("utf-8"))
+
+
 async def process_all_start_ranges():
     """Process all charge hours with missing start_range values in batch."""
     my_logger.debug("Received request to process all missing start_range values")
@@ -884,6 +905,125 @@ async def process_all_start_ranges():
             break
 
     message = f"Start range batch processing completed. Processed {processed_count} charge hours, skipped {failed_count} invalid records."
+    my_logger.info(message)
+    return message
+
+
+async def fix_negative_amounts():
+    """
+    Fix all charge hours with negative amounts and negative prices.
+    Then call the update prices endpoint to recalculate prices.
+    """
+    my_logger.debug("Starting to fix negative amounts and prices")
+    
+    conn, cur = await db_connect(my_logger)
+    amount_fixed_count = 0
+    amount_failed_count = 0
+    price_fixed_count = 0
+    
+    try:
+        # First, fix negative amounts by recalculating them
+        cur.execute(
+            "SELECT id, start_at, stop_at, amount FROM skoda.charge_hours WHERE amount < 0"
+        )
+        negative_amount_records = cur.fetchall()
+        
+        my_logger.info("Found %d records with negative amounts", len(negative_amount_records))
+        
+        for record in negative_amount_records:
+            charge_id, start_at, stop_at, current_amount = record
+            my_logger.debug(
+                "Fixing negative amount for charge hour %s: current_amount=%s, start_at=%s, stop_at=%s",
+                charge_id, current_amount, start_at, stop_at
+            )
+            
+            if start_at and stop_at:
+                # Parse datetime objects or strings
+                if isinstance(start_at, datetime.datetime):
+                    start_time = start_at
+                else:
+                    start_time = datetime.datetime.strptime(start_at, "%Y-%m-%d %H:%M:%S")
+
+                if isinstance(stop_at, datetime.datetime):
+                    stop_time = stop_at
+                else:
+                    stop_time = datetime.datetime.strptime(stop_at, "%Y-%m-%d %H:%M:%S")
+
+                # Calculate correct duration and amount
+                duration = (stop_time - start_time).total_seconds() / 3600
+                
+                if duration < 0:
+                    # Still negative, set to 0
+                    new_amount = 0.0
+                    my_logger.warning(
+                        "Duration still negative for charge hour %s, setting amount to 0", 
+                        charge_id
+                    )
+                else:
+                    new_amount = duration * 10.5
+                
+                # Update the record
+                cur.execute(
+                    "UPDATE skoda.charge_hours SET amount = ? WHERE id = ?",
+                    (new_amount, charge_id)
+                )
+                
+                my_logger.debug(
+                    "Fixed charge hour %s: old_amount=%s, new_amount=%s, duration=%s hours",
+                    charge_id, current_amount, new_amount, duration
+                )
+                amount_fixed_count += 1
+            else:
+                my_logger.warning(
+                    "Cannot fix charge hour %s - missing start_at or stop_at times",
+                    charge_id
+                )
+                amount_failed_count += 1
+        
+        # Second, fix negative prices by setting them to NULL
+        cur.execute(
+            "SELECT id, price FROM skoda.charge_hours WHERE price < 0"
+        )
+        negative_price_records = cur.fetchall()
+        
+        my_logger.info("Found %d records with negative prices", len(negative_price_records))
+        
+        for record in negative_price_records:
+            charge_id, current_price = record
+            my_logger.debug(
+                "Fixing negative price for charge hour %s: current_price=%s",
+                charge_id, current_price
+            )
+            
+            # Set price to NULL so the charge price update function can recalculate it
+            cur.execute(
+                "UPDATE skoda.charge_hours SET price = NULL WHERE id = ?",
+                (charge_id,)
+            )
+            
+            my_logger.debug(
+                "Fixed charge hour %s: old_price=%s, new_price=NULL",
+                charge_id, current_price
+            )
+            price_fixed_count += 1
+        
+        conn.commit()
+        
+        # Now call the update prices endpoint to recalculate prices
+        try:
+            import httpx
+            async with httpx.AsyncClient() as client:
+                response = await client.get("http://skodaupdatechargeprices:80/")
+                my_logger.info("Called update prices endpoint, response: %s", response.status_code)
+        except Exception as e:
+            my_logger.warning("Failed to call update prices endpoint: %s", e)
+        
+    except Exception as e:
+        my_logger.error("Error fixing negative amounts and prices: %s", e)
+        conn.rollback()
+        raise
+    
+    message = f"Fixed negative amounts: {amount_fixed_count} amounts fixed, {amount_failed_count} amounts failed; {price_fixed_count} prices fixed. Update prices endpoint called."
     my_logger.info(message)
     return message
 
