@@ -8,6 +8,8 @@ and calculates billing amounts based on charging duration.
 
 import asyncio
 import datetime
+import os
+import re
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
@@ -317,8 +319,6 @@ async def find_records_with_no_start_range():
 async def update_charge_with_event_data(charge_id, charge):
     my_logger.debug("Updating event %s with charge data: %s", charge_id, charge)
     conn, cur = await db_connect(my_logger)
-    global lasthour
-    global stillgoing
     try:
         my_logger.debug(
             "(in try except) Updating event %s with charge data: %s", charge_id, charge
@@ -354,8 +354,8 @@ async def update_charge_with_event_data(charge_id, charge):
             if not check_if_charge_hour_started:
                 # If we get a stop event without a start, set start_at to beginning of hour
                 my_logger.warning(
-                    "Stop event found without corresponding start event for hour %s, setting start_at to beginning of hour", 
-                    hour
+                    "Stop event found without corresponding start event for hour %s, setting start_at to beginning of hour",
+                    hour,
                 )
                 await start_charge_hour(hour, f"{hour}:00:00")
             _collector_state.still_going = False
@@ -519,18 +519,42 @@ async def calculate_and_update_charge_amount(charge_id: str) -> Optional[int]:
                 charge_id,
             )
 
-            # Calculate duration in hours and amount at 10.5 per hour
+            # Calculate duration in hours
             duration = (stop_time - start_time).total_seconds() / 3600
-            
-            # Check for negative duration (indicates data issue)
+
+            # Attempt to compute energy based on power readings from raw logs
+            amount = None
             if duration < 0:
                 my_logger.warning(
                     "Negative duration detected for charge hour %s: start=%s, stop=%s, duration=%s hours. Setting amount to 0.",
-                    charge_id, start_time, stop_time, duration
+                    charge_id,
+                    start_time,
+                    stop_time,
+                    duration,
                 )
                 amount = 0.0
             else:
-                amount = duration * 10.5
+                try:
+                    amount = _compute_amount_from_power_readings(
+                        cur, start_time, stop_time
+                    )
+                except (mariadb.Error, ValueError, TypeError) as e:
+                    my_logger.warning(
+                        "Power-based calculation failed for %s: %s (falling back to 10.5kW heuristic)",
+                        charge_id,
+                        e,
+                    )
+                    amount = None
+
+                # Fallback to heuristic if we couldn't compute from power logs
+                if amount is None:
+                    amount = duration * 10.5
+
+            # Verify with SoC if battery capacity is provided
+            try:
+                _verify_energy_with_soc(cur, start_time, stop_time, amount)
+            except mariadb.Error as e:
+                my_logger.warning("SoC verification failed due to DB error: %s", e)
 
             my_logger.debug(
                 "Calculated duration: %s hours, amount: %s for charge hour %s",
@@ -627,12 +651,9 @@ async def invoke_charge_collector():
             my_logger.debug(
                 "More empty amounts found, batch processing all remaining..."
             )
-            try:
-                result = await process_all_amounts()
-                my_logger.debug("Batch processing result: %s", result)
-                sleeptime = 0.001  # Quick cycle after batch processing
-            except Exception as e:
-                my_logger.error("Batch processing failed: %s", e)
+            result = await process_all_amounts()
+            my_logger.debug("Batch processing result: %s", result)
+            sleeptime = 0.001  # Quick cycle after batch processing
     else:
         my_logger.debug("No charge hours with empty amounts found.")
 
@@ -652,12 +673,9 @@ async def invoke_charge_collector():
                 my_logger.debug(
                     "More records need start_range, batch processing all remaining..."
                 )
-                try:
-                    result = await process_all_start_ranges()
-                    my_logger.debug("Start range batch processing result: %s", result)
-                    sleeptime = 0.001  # Quick cycle after batch processing
-                except Exception as e:
-                    my_logger.error("Start range batch processing failed: %s", e)
+                result = await process_all_start_ranges()
+                my_logger.debug("Start range batch processing result: %s", result)
+                sleeptime = 0.001  # Quick cycle after batch processing
 
     # Check if we need to invoke the API call after processing data
     if sleeptime != SLEEPTIME:
@@ -701,7 +719,20 @@ async def call_update_charges_api():
                 records_needing_updates,
             )
 
-            api_result = await pull_api(UPDATECHARGES_URL, my_logger)
+            # Try both likely endpoints and accept any 2xx response
+            try:
+                import httpx
+
+                async with httpx.AsyncClient() as client:
+                    resp = await client.get(
+                        "http://skodaupdatechargeprices:80/update-charges"
+                    )
+                    if resp.status_code // 100 != 2:
+                        # Fallback to root
+                        resp = await client.get("http://skodaupdatechargeprices:80/")
+                    my_logger.debug("Update charges API status: %s", resp.status_code)
+            except Exception as e:
+                my_logger.warning("Update charges API call failed: %s", e)
 
             # Check if the number of records decreased
             records_after = await count_records_needing_price_updates()
@@ -724,7 +755,7 @@ async def call_update_charges_api():
         my_logger.info(
             "Background API calls completed. Made %d price updates.", updates_made
         )
-    except Exception as e:
+    except mariadb.Error as e:
         my_logger.error("Background API calls failed: %s", e)
 
 
@@ -735,14 +766,14 @@ async def count_records_needing_price_updates() -> int:
     Returns:
         int: Number of records that need price updates
     """
-    conn, cur = await db_connect(my_logger)
+    db_conn, cur = await db_connect(my_logger)
     try:
         cur.execute(
             "SELECT COUNT(*) FROM skoda.charge_hours WHERE price IS NULL AND amount IS NOT NULL"
         )
         count = cur.fetchone()[0]
         return count
-    except Exception as e:
+    except mariadb.Error as e:
         my_logger.error("Error counting records needing price updates: %s", e)
         return 0
 
@@ -764,6 +795,23 @@ def read_last_n_lines(filename: str, n: int) -> list:
 
 
 app = FastAPI()
+
+
+@app.on_event("startup")
+async def _start_background_runner():
+    """Start the continuous charge runner when the API starts."""
+    asyncio.create_task(chargerunner())
+    # Also, proactively fix any negative amounts/prices on startup so they don't linger
+    asyncio.create_task(_fix_negatives_on_startup())
+
+
+async def _fix_negatives_on_startup() -> None:
+    """Run the negative amounts/price fixer once at startup in the background."""
+    try:
+        msg = await fix_negative_amounts()
+        my_logger.info("Startup negative amounts fix completed: %s", msg)
+    except Exception as exc:  # Broad on purpose to avoid blocking startup
+        my_logger.warning("Startup fix-negative-amounts failed: %s", exc)
 
 
 @app.get("/collect-charges")
@@ -807,17 +855,17 @@ async def process_all_amounts():
                 failed_count,
             )
             # Skip this record by setting amount to -1 to mark it as processed but invalid
-            conn, cur = await db_connect(my_logger)
+            db_conn, cur = await db_connect(my_logger)
             try:
                 cur.execute(
                     "UPDATE skoda.charge_hours SET amount = -1 WHERE id = ?",
                     (empty_charge_id,),
                 )
-                conn.commit()
+                db_conn.commit()
                 my_logger.debug(
                     "Marked charge hour %s as invalid (amount = -1)", empty_charge_id
                 )
-            except Exception as e:
+            except mariadb.Error as e:
                 my_logger.error("Failed to mark charge hour as invalid: %s", e)
 
             if failed_count >= max_failures:
@@ -828,6 +876,11 @@ async def process_all_amounts():
         else:  # Database error (None)
             my_logger.error("Database error processing charge hour %s", empty_charge_id)
             break
+
+    # Trigger price updates automatically if we changed any amounts
+    if processed_count > 0:
+        _collector_state.data_processed = 1
+        asyncio.create_task(call_update_charges_api())
 
     message = f"Batch processing completed. Processed {processed_count} charge hours, skipped {failed_count} invalid records."
     my_logger.info(message)
@@ -880,17 +933,17 @@ async def process_all_start_ranges():
                 failed_count,
             )
             # Skip this record by setting start_range to -1 to mark it as processed but invalid
-            conn, cur = await db_connect(my_logger)
+            db_conn, cur = await db_connect(my_logger)
             try:
                 cur.execute(
                     "UPDATE skoda.charge_hours SET start_range = -1 WHERE log_timestamp = ?",
                     (missing_start_range,),
                 )
-                conn.commit()
+                db_conn.commit()
                 my_logger.debug(
                     "Marked hour %s as invalid (start_range = -1)", missing_start_range
                 )
-            except Exception as e:
+            except mariadb.Error as e:
                 my_logger.error("Failed to mark hour as invalid: %s", e)
 
             if failed_count >= max_failures:
@@ -915,117 +968,362 @@ async def fix_negative_amounts():
     Then call the update prices endpoint to recalculate prices.
     """
     my_logger.debug("Starting to fix negative amounts and prices")
-    
+
     conn, cur = await db_connect(my_logger)
     amount_fixed_count = 0
     amount_failed_count = 0
     price_fixed_count = 0
-    
+
     try:
         # First, fix negative amounts by recalculating them
         cur.execute(
             "SELECT id, start_at, stop_at, amount FROM skoda.charge_hours WHERE amount < 0"
         )
         negative_amount_records = cur.fetchall()
-        
-        my_logger.info("Found %d records with negative amounts", len(negative_amount_records))
-        
+
+        my_logger.info(
+            "Found %d records with negative amounts", len(negative_amount_records)
+        )
+
         for record in negative_amount_records:
             charge_id, start_at, stop_at, current_amount = record
             my_logger.debug(
                 "Fixing negative amount for charge hour %s: current_amount=%s, start_at=%s, stop_at=%s",
-                charge_id, current_amount, start_at, stop_at
+                charge_id,
+                current_amount,
+                start_at,
+                stop_at,
             )
-            
+
             if start_at and stop_at:
                 # Parse datetime objects or strings
                 if isinstance(start_at, datetime.datetime):
                     start_time = start_at
                 else:
-                    start_time = datetime.datetime.strptime(start_at, "%Y-%m-%d %H:%M:%S")
+                    start_time = datetime.datetime.strptime(
+                        start_at, "%Y-%m-%d %H:%M:%S"
+                    )
 
                 if isinstance(stop_at, datetime.datetime):
                     stop_time = stop_at
                 else:
                     stop_time = datetime.datetime.strptime(stop_at, "%Y-%m-%d %H:%M:%S")
 
-                # Calculate correct duration and amount
+                # Calculate correct duration and amount using power readings when possible
                 duration = (stop_time - start_time).total_seconds() / 3600
-                
+
                 if duration < 0:
                     # Still negative, set to 0
                     new_amount = 0.0
                     my_logger.warning(
-                        "Duration still negative for charge hour %s, setting amount to 0", 
-                        charge_id
+                        "Duration still negative for charge hour %s, setting amount to 0",
+                        charge_id,
                     )
                 else:
-                    new_amount = duration * 10.5
-                
+                    try:
+                        computed = _compute_amount_from_power_readings(
+                            cur, start_time, stop_time
+                        )
+                    except (mariadb.Error, ValueError, TypeError) as e:
+                        my_logger.warning(
+                            "Power-based recalculation failed for %s: %s (falling back to 10.5kW heuristic)",
+                            charge_id,
+                            e,
+                        )
+                        computed = None
+
+                    new_amount = computed if computed is not None else duration * 10.5
+
+                # Verify with SoC if battery capacity is provided
+                try:
+                    _verify_energy_with_soc(cur, start_time, stop_time, new_amount)
+                except mariadb.Error as e:
+                    my_logger.warning("SoC verification failed due to DB error: %s", e)
+
                 # Update the record
                 cur.execute(
                     "UPDATE skoda.charge_hours SET amount = ? WHERE id = ?",
-                    (new_amount, charge_id)
+                    (new_amount, charge_id),
                 )
-                
+
                 my_logger.debug(
                     "Fixed charge hour %s: old_amount=%s, new_amount=%s, duration=%s hours",
-                    charge_id, current_amount, new_amount, duration
+                    charge_id,
+                    current_amount,
+                    new_amount,
+                    duration,
                 )
                 amount_fixed_count += 1
             else:
                 my_logger.warning(
                     "Cannot fix charge hour %s - missing start_at or stop_at times",
-                    charge_id
+                    charge_id,
                 )
                 amount_failed_count += 1
-        
+
         # Second, fix negative prices by setting them to NULL
-        cur.execute(
-            "SELECT id, price FROM skoda.charge_hours WHERE price < 0"
-        )
+        cur.execute("SELECT id, price FROM skoda.charge_hours WHERE price < 0")
         negative_price_records = cur.fetchall()
-        
-        my_logger.info("Found %d records with negative prices", len(negative_price_records))
-        
+
+        my_logger.info(
+            "Found %d records with negative prices", len(negative_price_records)
+        )
+
         for record in negative_price_records:
             charge_id, current_price = record
             my_logger.debug(
                 "Fixing negative price for charge hour %s: current_price=%s",
-                charge_id, current_price
+                charge_id,
+                current_price,
             )
-            
+
             # Set price to NULL so the charge price update function can recalculate it
             cur.execute(
-                "UPDATE skoda.charge_hours SET price = NULL WHERE id = ?",
-                (charge_id,)
+                "UPDATE skoda.charge_hours SET price = NULL WHERE id = ?", (charge_id,)
             )
-            
+
             my_logger.debug(
                 "Fixed charge hour %s: old_price=%s, new_price=NULL",
-                charge_id, current_price
+                charge_id,
+                current_price,
             )
             price_fixed_count += 1
-        
+
         conn.commit()
-        
+
         # Now call the update prices endpoint to recalculate prices
-        try:
-            import httpx
-            async with httpx.AsyncClient() as client:
-                response = await client.get("http://skodaupdatechargeprices:80/")
-                my_logger.info("Called update prices endpoint, response: %s", response.status_code)
-        except Exception as e:
-            my_logger.warning("Failed to call update prices endpoint: %s", e)
-        
-    except Exception as e:
+        await pull_api(UPDATECHARGES_URL, my_logger)
+
+    except mariadb.Error as e:
         my_logger.error("Error fixing negative amounts and prices: %s", e)
         conn.rollback()
         raise
-    
+
     message = f"Fixed negative amounts: {amount_fixed_count} amounts fixed, {amount_failed_count} amounts failed; {price_fixed_count} prices fixed. Update prices endpoint called."
     my_logger.info(message)
     return message
+
+
+def _parse_charge_power(log_message: str) -> Optional[float]:
+    """
+    Extract charge_power_in_kw from a raw log message.
+
+    The expected format contains a segment like 'charge_power_in_kw=90.0'.
+    Returns a float power in kW if found, otherwise None.
+    """
+    try:
+        match = re.search(r"charge_power_in_kw=([0-9]+(?:\.[0-9]+)?)", log_message)
+        if match:
+            return float(match.group(1))
+        return None
+    except (ValueError, TypeError):
+        return None
+
+
+def _compute_amount_from_power_readings(
+    cur, start_time: datetime.datetime, stop_time: datetime.datetime
+) -> Optional[float]:
+    """
+    Compute the energy (kWh) between start and stop by integrating power readings
+    from skoda.rawlogs that contain 'Charging data fetched' with a charge_power_in_kw value.
+
+    - Queries the last reading at or before start_time to seed the initial power.
+    - Queries all readings between start_time and stop_time.
+    - Approximates energy using piecewise-constant power between readings.
+
+    Returns None when there are no usable readings so callers can fall back.
+    """
+    # Fetch the last reading before or at start_time
+    cur.execute(
+        """
+        SELECT log_timestamp, log_message
+        FROM skoda.rawlogs
+                WHERE log_timestamp <= ?
+                    AND log_message LIKE 'Charging data fetched:%'
+                    AND log_message LIKE '%charge_power_in_kw=%'
+        ORDER BY log_timestamp DESC
+        LIMIT 1
+        """,
+        (start_time,),
+    )
+    before_row = cur.fetchone()
+
+    # Fetch all readings within the interval
+    cur.execute(
+        """
+        SELECT log_timestamp, log_message
+        FROM skoda.rawlogs
+                WHERE log_timestamp > ? AND log_timestamp <= ?
+                    AND log_message LIKE 'Charging data fetched:%'
+                    AND log_message LIKE '%charge_power_in_kw=%'
+        ORDER BY log_timestamp ASC
+        """,
+        (start_time, stop_time),
+    )
+    within_rows = cur.fetchall() or []
+
+    points: list[tuple[datetime.datetime, float]] = []
+
+    # Seed with before reading if available
+    if before_row is not None:
+        ts, msg = before_row
+        power = _parse_charge_power(str(msg))
+        if power is not None:
+            points.append((ts if isinstance(ts, datetime.datetime) else ts, power))
+
+    # Add within readings
+    for ts, msg in within_rows:
+        power = _parse_charge_power(str(msg))
+        if power is not None:
+            points.append((ts if isinstance(ts, datetime.datetime) else ts, power))
+
+    # No usable readings
+    if not points:
+        return None
+
+    # Sort by timestamp to be safe
+    points.sort(key=lambda x: x[0])
+
+    # Integrate power over time within [start_time, stop_time]
+    energy_kwh = 0.0
+    for idx, (ts, power) in enumerate(points):
+        # Current segment start is max(ts, start_time)
+        seg_start = ts if ts > start_time else start_time
+
+        # Determine segment end
+        if idx + 1 < len(points):
+            next_ts = points[idx + 1][0]
+            seg_end = next_ts if next_ts < stop_time else stop_time
+        else:
+            seg_end = stop_time
+
+        if seg_end <= seg_start:
+            continue
+
+        hours = (seg_end - seg_start).total_seconds() / 3600
+        # Ensure non-negative power
+        p = max(0.0, float(power))
+        energy_kwh += p * hours
+
+        # Early exit if we've reached the boundary
+        if seg_end >= stop_time:
+            break
+
+    # Guard against tiny negatives due to floating errors
+    if energy_kwh < 0:
+        energy_kwh = 0.0
+
+    return energy_kwh
+
+
+def _parse_soc_percent(log_message: str) -> Optional[float]:
+    """
+    Extract state_of_charge_in_percent from a raw log message.
+
+    Returns a float percentage [0..100] if found, else None.
+    """
+    try:
+        match = re.search(
+            r"state_of_charge_in_percent=([0-9]+(?:\.[0-9]+)?)", log_message
+        )
+        if match:
+            return float(match.group(1))
+        return None
+    except (ValueError, TypeError):
+        return None
+
+
+def _compute_soc_based_energy(
+    cur,
+    start_time: datetime.datetime,
+    stop_time: datetime.datetime,
+    capacity_kwh: float,
+) -> Optional[float]:
+    """
+    Estimate energy added (kWh) from SoC change using provided battery capacity.
+
+    Approach:
+    - Find the last SoC at or before start_time.
+    - Find the last SoC at or before stop_time.
+    - Energy ~= (soc_end - soc_start)/100 * capacity_kwh (min 0).
+    Returns None if missing data.
+    """
+    # SoC at or before start
+    cur.execute(
+        """
+        SELECT log_timestamp, log_message FROM skoda.rawlogs
+        WHERE log_timestamp <= ?
+          AND log_message LIKE 'Charging data fetched:%'
+          AND log_message LIKE '%state_of_charge_in_percent=%'
+        ORDER BY log_timestamp DESC
+        LIMIT 1
+        """,
+        (start_time,),
+    )
+    row_start = cur.fetchone()
+
+    # SoC at or before stop
+    cur.execute(
+        """
+        SELECT log_timestamp, log_message FROM skoda.rawlogs
+        WHERE log_timestamp <= ?
+          AND log_message LIKE 'Charging data fetched:%'
+          AND log_message LIKE '%state_of_charge_in_percent=%'
+        ORDER BY log_timestamp DESC
+        LIMIT 1
+        """,
+        (stop_time,),
+    )
+    row_end = cur.fetchone()
+
+    if not row_start or not row_end:
+        return None
+
+    soc_start = _parse_soc_percent(str(row_start[1]))
+    soc_end = _parse_soc_percent(str(row_end[1]))
+    if soc_start is None or soc_end is None:
+        return None
+
+    delta_pct = max(0.0, soc_end - soc_start)
+    return (delta_pct / 100.0) * float(capacity_kwh)
+
+
+def _verify_energy_with_soc(
+    cur, start_time: datetime.datetime, stop_time: datetime.datetime, energy_kwh: float
+) -> None:
+    """
+    If SKODA_BATTERY_CAPACITY_KWH is set, compare power-based kWh vs SoC-based kWh.
+    Logs an info line with both values and warns if discrepancy > 30%.
+    """
+    cap_env = os.environ.get("SKODA_BATTERY_CAPACITY_KWH")
+    if not cap_env:
+        return
+    try:
+        capacity_kwh = float(cap_env)
+        if capacity_kwh <= 0:
+            return
+    except ValueError:
+        return
+
+    soc_kwh = _compute_soc_based_energy(cur, start_time, stop_time, capacity_kwh)
+    if soc_kwh is None:
+        return
+
+    # Compute discrepancy percentage relative to power-based amount.
+    baseline = max(energy_kwh, 0.0001)
+    discrepancy = abs(energy_kwh - soc_kwh) / baseline * 100.0
+    my_logger.info(
+        "SoC verification: power_kwh=%.3f, soc_kwh=%.3f, discrepancy=%.1f%%",
+        energy_kwh,
+        soc_kwh,
+        discrepancy,
+    )
+    if discrepancy > 30.0:
+        my_logger.warning(
+            "SoC vs power energy mismatch > 30%% (power=%.3f, soc=%.3f). Check readings or capacity.",
+            energy_kwh,
+            soc_kwh,
+        )
 
 
 @app.get("/")

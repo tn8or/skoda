@@ -332,7 +332,7 @@ def _parse_charge_operation(log_message: str) -> str:
         log_message (str): The log message containing charge operation data.
 
     Returns:
-        str: 'stop' for charging stopped, 'start' for charging started.
+        str: 'stop' for charging stopped, 'start' for charging started..
 
     Raises:
         ValueError: If no valid charge operation is found in the message.
