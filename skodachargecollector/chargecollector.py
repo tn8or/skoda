@@ -17,7 +17,14 @@ import mariadb
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 
-from commons import SLEEPTIME, UPDATECHARGES_URL, db_connect, get_logger, pull_api
+from commons import (
+    SLEEPTIME,
+    UPDATECHARGES_URL,
+    UPDATEALLCHARGES_URL,
+    db_connect,
+    get_logger,
+    pull_api,
+)
 
 
 @dataclass
@@ -719,20 +726,29 @@ async def call_update_charges_api():
                 records_needing_updates,
             )
 
-            # Try both likely endpoints and accept any 2xx response
+            # Try bulk endpoint first, then fall back to likely endpoints and accept any 2xx response
             try:
                 import httpx
 
                 async with httpx.AsyncClient() as client:
+                    # Prefer the bulk updater if available
                     resp = await client.get(
-                        "http://skodaupdatechargeprices:80/update-charges"
+                        "http://skodaupdatechargeprices:80/update-all-charges"
                     )
+                    if resp.status_code // 100 != 2:
+                        # Fallback to single-update endpoint
+                        resp = await client.get(
+                            "http://skodaupdatechargeprices:80/update-charges"
+                        )
                     if resp.status_code // 100 != 2:
                         # Fallback to root
                         resp = await client.get("http://skodaupdatechargeprices:80/")
                     my_logger.debug("Update charges API status: %s", resp.status_code)
             except Exception as e:
                 my_logger.warning("Update charges API call failed: %s", e)
+
+            # Give the price service a brief moment to commit before recounting
+            await asyncio.sleep(0.05)
 
             # Check if the number of records decreased
             records_after = await count_records_needing_price_updates()
@@ -1091,8 +1107,15 @@ async def fix_negative_amounts():
 
         conn.commit()
 
-        # Now call the update prices endpoint to recalculate prices
-        await pull_api(UPDATECHARGES_URL, my_logger)
+        # Now call the bulk update prices endpoint to recalculate all prices
+        try:
+            result = await pull_api(UPDATEALLCHARGES_URL, my_logger)
+            if result is None:
+                # Fallback to single-update endpoint
+                await pull_api(UPDATECHARGES_URL, my_logger)
+        except Exception:
+            # Last resort fallback
+            await pull_api(UPDATECHARGES_URL, my_logger)
 
     except mariadb.Error as e:
         my_logger.error("Error fixing negative amounts and prices: %s", e)

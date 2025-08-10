@@ -36,6 +36,51 @@ async def update_charges():
     return PlainTextResponse("Charge prices updated.".encode("utf-8"))
 
 
+async def _count_records_needing_price_updates() -> int:
+    """Count how many charge hour records have amounts but no prices."""
+    conn, cur = await db_connect(my_logger)
+    loop = asyncio.get_event_loop()
+    try:
+        await loop.run_in_executor(
+            None,
+            cur.execute,
+            "SELECT COUNT(*) FROM skoda.charge_hours WHERE price IS NULL AND amount IS NOT NULL",
+        )
+        count = cur.fetchone()[0]
+        return int(count)
+    except mariadb.Error as e:
+        my_logger.error("Error counting records needing price updates: %s", e)
+        return 0
+
+
+@app.get("/update-all-charges")
+async def update_all_charges():
+    """Update prices for all records with amount IS NOT NULL and price IS NULL."""
+    my_logger.debug("Received request to update ALL outstanding charge prices")
+
+    processed = 0
+    max_updates = 5000  # safety bound
+
+    while processed < max_updates:
+        remaining = await _count_records_needing_price_updates()
+        if remaining == 0:
+            break
+        # Attempt to update one; if it returns True we made progress
+        result = await update_one_charge_price()
+        if result:
+            processed += 1
+            # tiny pause to avoid hammering external APIs and DB
+            await asyncio.sleep(0.01)
+        else:
+            # Could be transient fetch error; brief backoff then re-check remaining
+            await asyncio.sleep(0.2)
+
+    leftover = await _count_records_needing_price_updates()
+    message = f"Updated {processed} prices. Remaining: {leftover}."
+    my_logger.info(message)
+    return PlainTextResponse(message.encode("utf-8"))
+
+
 @app.get("/")
 async def root():
     conn, cur = await db_connect(my_logger)
