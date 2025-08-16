@@ -50,8 +50,6 @@ idna==3.10
     #   anyio
     #   httpx
     #   yarl
-mariadb==1.1.13
-    # via -r skodaimporter/requirements.in
 mashumaro[orjson]==3.16
     # via myskoda
 multidict==6.6.4
@@ -62,8 +60,6 @@ myskoda==2.3.3
     # via -r skodaimporter/requirements.in
 orjson==3.11.2
     # via mashumaro
-packaging==25.0
-    # via mariadb
 paho-mqtt==2.1.0
     # via aiomqtt
 propcache==0.3.2
@@ -76,6 +72,8 @@ pydantic-core==2.33.2
     # via pydantic
 pyjwt==2.10.1
     # via myskoda
+pymysql==1.1.1
+    # via -r skodaimporter/requirements.in
 pyyaml==6.0.2
     # via myskoda
 sniffio==1.3.1

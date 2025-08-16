@@ -3,7 +3,7 @@ FROM python:3.13-alpine AS build
 WORKDIR /app
 ARG TARGETPLATFORM
 RUN echo "I'm building for $TARGETPLATFORM"
-RUN apk add --no-cache mariadb-client mariadb-connector-c-dev gcc musl-dev
+RUN apk add --no-cache gcc musl-dev
 
 ENV VIRTUAL_ENV=/opt/venv
 RUN python3 -m venv $VIRTUAL_ENV
@@ -63,7 +63,7 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 WORKDIR /app
 
 # Install only runtime dependencies (no build tools needed)
-RUN apk add --no-cache mariadb-connector-c curl
+RUN apk add --no-cache curl
 
 # Copy application code and virtual environment from build stage only
 COPY --from=build /app /app

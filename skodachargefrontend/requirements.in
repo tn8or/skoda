@@ -1,4 +1,4 @@
-mariadb
+pymysql
 fastapi
 uvicorn
 watchfiles

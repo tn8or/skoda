@@ -1,7 +1,8 @@
 import asyncio
+import importlib
 import json
-import os
 import time
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Optional
 
 # Optional MariaDB import to allow module import without DB driver in CI
@@ -18,11 +19,12 @@ from commons import CHARGEFINDER_URL, db_connect, get_logger, load_secret, pull_
 # Optional type-only imports to keep runtime import free when myskoda is missing
 if TYPE_CHECKING:  # pragma: no cover - import only for type checkers
     from myskoda import MySkoda as MySkodaType
-    from myskoda.event import Event as MySkodaEvent
-    from myskoda.models.charging import Charging as MySkodaCharging
-    from myskoda.models.health import Health as MySkodaHealth
-    from myskoda.models.position import PositionType as MySkodaPositionType
-    from myskoda.models.status import Status as MySkodaStatus
+
+    MySkodaEvent = Any
+    MySkodaCharging = Any
+    MySkodaHealth = Any
+    MySkodaPositionType = Any
+    MySkodaStatus = Any
 VIN = ""
 # Global myskoda client; initialized in skodarunner() when myskoda is available...
 myskoda: Optional[Any] = None
@@ -66,26 +68,111 @@ async def on_event(event: Any) -> None:
         await save_log_to_db(event_json)
         print(event)
         last_event_received = time.time()
-        # Lazy import enums to avoid module import at import time
-        try:
-            from myskoda.event import EventType as _EventType
-            from myskoda.event import ServiceEventTopic as _ServiceEventTopic
-        except Exception:
-            my_logger.error("myskoda not available; cannot process events")
-            return
-        if event.type == _EventType.SERVICE_EVENT:
+
+        # Resolve event enums from various possible module paths, with graceful fallback
+        def _resolve_event_enums():
+            candidates = (
+                "myskoda.event",
+                "myskoda.events",
+                "myskoda.models.event",
+                "myskoda.models.events",
+            )
+            for mod in candidates:
+                try:
+                    m = importlib.import_module(mod)
+                    my_logger.debug("Resolved myskoda event enums from %s", mod)
+                    return getattr(m, "EventType"), getattr(m, "ServiceEventTopic")
+                except Exception:  # noqa: BLE001
+                    continue
+            return None, None
+
+        _EventType, _ServiceEventTopic = _resolve_event_enums()
+
+        # Determine event kind even if enums can't be imported
+        def _is_service_event(t: Any) -> bool:
+            if _EventType is not None:
+                try:
+                    return t == _EventType.SERVICE_EVENT
+                except Exception:  # noqa: BLE001
+                    pass
+            name = getattr(t, "name", None)
+            if isinstance(name, str):
+                return name == "SERVICE_EVENT"
+            return str(t).endswith("SERVICE_EVENT")
+
+        def _is_charging_topic(topic: Any) -> bool:
+            if _ServiceEventTopic is not None:
+                try:
+                    return topic == _ServiceEventTopic.CHARGING
+                except Exception:  # noqa: BLE001
+                    pass
+            name = getattr(topic, "name", None)
+            if isinstance(name, str):
+                return name == "CHARGING"
+            return str(topic).endswith("CHARGING")
+
+        if _EventType is None or _ServiceEventTopic is None:
+            my_logger.warning(
+                "myskoda event enums not found; using name-based detection"
+            )
+
+        # Extract event_type and topic/name robustly across myskoda versions
+        event_type_val = getattr(event, "event_type", None)
+        if event_type_val is None:
+            event_type_val = getattr(event, "type", None)
+
+        # Helper to fetch event data object (supports both `event.data` and `data`)
+        data_obj = getattr(getattr(event, "event", None), "data", None)
+        if data_obj is None:
+            data_obj = getattr(event, "data", None)
+
+        # Decide if this is a service event using enums or names
+        if _is_service_event(event_type_val):
             api_result = await pull_api(CHARGEFINDER_URL, my_logger)
             my_logger.debug("API result: %s", api_result)
             my_logger.debug("Received service event.")
             await save_log_to_db("Received service event.")
-            if event.topic == _ServiceEventTopic.CHARGING:
-                my_logger.debug("Battery is %s%% charged.", event.event.data.soc)
-                await save_log_to_db(f"Battery is {event.event.data.soc}% charged.")
+            # Determine if this service event is related to charging
+            is_charging = False
+            # Primary: topic enum if available
+            topic_val = getattr(event, "topic", None)
+            if topic_val is not None and _is_charging_topic(topic_val):
+                is_charging = True
+            # Fallbacks: presence of SOC in data or name-based hints
+            name_val = getattr(event, "name", None)
+            if not is_charging and hasattr(data_obj, "soc"):
+                is_charging = True
+            if not is_charging and isinstance(getattr(name_val, "name", None), str):
+                is_charging = getattr(name_val, "name") in {
+                    "CHARGING",
+                    "CHARGING_STATUS_CHANGED",
+                    "START_CHARGING",
+                    "STOP_CHARGING",
+                }
+
+            if is_charging:
+                soc_val = None
+                if hasattr(data_obj, "soc"):
+                    soc_val = getattr(data_obj, "soc")
+                my_logger.debug("Charging-related event. SOC=%s", soc_val)
+                await save_log_to_db(f"Charging event detected. SOC={soc_val}")
                 await get_skoda_update(VIN)
                 charging = await myskoda.get_charging(VIN)
                 my_logger.debug("Charging data fetched.")
                 await save_log_to_db(f"Charging data fetched: {charging}")
                 my_logger.debug(charging)
+            else:
+                # Non-charging service events are informational; do not mark unhealthy
+                my_logger.info(
+                    "Ignoring non-charging service event: name=%s",
+                    getattr(name_val, "name", name_val),
+                )
+        else:
+            # Not a service event; ignore (e.g., VEHICLE_EVENT like VEHICLE_AWAKE)
+            my_logger.info(
+                "Ignoring non-service event: event_type=%s",
+                getattr(event_type_val, "name", event_type_val),
+            )
     except Exception as e:  # noqa: BLE001
         _mark_unhealthy(f"event processing failed: {e}")
 
@@ -230,39 +317,44 @@ async def root():
             count = cur.fetchone()[0]
             last_25_lines_joined += f"\n\nTotal logs in database: {count}\n"
             cur.execute(
-                "SELECT * FROM skoda.rawlogs order by log_timestamp desc limit 10"
+                "SELECT log_timestamp, log_message FROM skoda.rawlogs order by log_timestamp desc limit 10"
             )
+            rows = cur.fetchall()
         except Exception as e:
             my_logger.error("Error fetching from database: %s", e)
             conn.rollback()
             # Do not terminate the process on DB fetch failure; just rollback and return logs so far
-            pass
-        for log_timestamp, log_message in cur:
+            rows = []
+        for log_timestamp, log_message in rows:
             last_25_lines_joined += f"{log_timestamp} - {log_message}\n"
         return PlainTextResponse(last_25_lines_joined.encode("utf-8"))
 
 
-# Start/stop background runner with FastAPI lifecycle
+# Start/stop background runner with FastAPI lifespan
 _bg_task: Optional[asyncio.Task] = None
 
 
-@app.on_event("startup")
-async def _startup() -> None:
-    global _bg_task
-    _bg_task = asyncio.create_task(skodarunner())
-
-
-@app.on_event("shutdown")
-async def _shutdown() -> None:
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
     global _bg_task, myskoda
-    if _bg_task is not None:
-        _bg_task.cancel()
-        try:
-            await _bg_task
-        except asyncio.CancelledError:
-            pass
-    if myskoda is not None:
-        try:
-            await myskoda.disconnect()
-        except Exception:  # noqa: BLE001
-            pass
+    # Startup: kick off background runner
+    _bg_task = asyncio.create_task(skodarunner())
+    try:
+        yield
+    finally:
+        # Shutdown: cancel background task and disconnect client
+        if _bg_task is not None:
+            _bg_task.cancel()
+            try:
+                await _bg_task
+            except asyncio.CancelledError:
+                pass
+        if myskoda is not None:
+            try:
+                await myskoda.disconnect()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+# Attach lifespan to the app
+app.router.lifespan_context = lifespan
