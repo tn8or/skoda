@@ -58,7 +58,7 @@ multidict==6.4.3
     # via
     #   aiohttp
     #   yarl
-myskoda==1.2.3
+myskoda==2.3.3
     # via -r skodaimporter/requirements.in
 orjson==3.10.16
     # via mashumaro

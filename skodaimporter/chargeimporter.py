@@ -139,7 +139,7 @@ async def root():
             raise HTTPException(status_code=503, detail=
                 'Service temporarily unavailable')
         else:
-            my_logger.debug('Charging refreshed: %s', result)
+            my_logger.debug('Charging refreshed: %s', charge_result)
     else:
         my_logger.info('Last event received %s seconds ago, within timeout.',
             int(elapsed))
