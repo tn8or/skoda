@@ -1,6 +1,6 @@
 import os
 
-import httpx
+# httpx will be imported lazily inside pull_api
 
 # Optional MariaDB import so modules can import without DB driver present
 try:  # pragma: no cover - optional dependency handling
@@ -23,6 +23,8 @@ UPDATEALLCHARGES_URL = "http://skodaupdatechargeprices/update-all-charges"
 
 async def pull_api(url, my_logger):
     try:
+        import httpx  # type: ignore
+
         async with httpx.AsyncClient() as client:
             response = await client.get(url)
             response.raise_for_status()

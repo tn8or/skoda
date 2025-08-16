@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
@@ -427,7 +428,18 @@ def read_last_n_lines(filename, n):
         return lines[-n:]
 
 
-app = FastAPI()
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    task = asyncio.create_task(chargerunner())
+    try:
+        yield
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
+app = FastAPI(lifespan=_lifespan)
 my_logger.debug("FastAPI app initialized.")
 
 
@@ -462,4 +474,4 @@ async def root():
     return PlainTextResponse(last_25_lines_joined.encode("utf-8"))
 
 
-background = asyncio.create_task(chargerunner())
+# Background task is created via FastAPI lifespan; nothing at import time.

@@ -2,5 +2,5 @@ fastapi
 mariadb
 uvicorn
 watchfiles
-httpx
 graypy
+httpx

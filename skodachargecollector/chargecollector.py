@@ -10,6 +10,7 @@ import asyncio
 import datetime
 import os
 import re
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
@@ -19,8 +20,8 @@ from fastapi.responses import PlainTextResponse
 
 from commons import (
     SLEEPTIME,
-    UPDATECHARGES_URL,
     UPDATEALLCHARGES_URL,
+    UPDATECHARGES_URL,
     db_connect,
     get_logger,
     pull_api,
@@ -810,15 +811,20 @@ def read_last_n_lines(filename: str, n: int) -> list:
         return lines[-n:]
 
 
-app = FastAPI()
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    runner = asyncio.create_task(chargerunner())
+    fixer = asyncio.create_task(_fix_negatives_on_startup())
+    try:
+        yield
+    finally:
+        for t in (runner, fixer):
+            t.cancel()
+            with suppress(asyncio.CancelledError):
+                await t
 
 
-@app.on_event("startup")
-async def _start_background_runner():
-    """Start the continuous charge runner when the API starts."""
-    asyncio.create_task(chargerunner())
-    # Also, proactively fix any negative amounts/prices on startup so they don't linger
-    asyncio.create_task(_fix_negatives_on_startup())
+app = FastAPI(lifespan=_lifespan)
 
 
 async def _fix_negatives_on_startup() -> None:

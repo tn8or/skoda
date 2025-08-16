@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import logging
 import os
+from contextlib import asynccontextmanager, suppress
 
 import httpx
 import mariadb
@@ -26,7 +27,20 @@ async def read_last_n_lines(filename, n):
     return await loop.run_in_executor(None, _read)
 
 
-app = FastAPI()
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    # Start background price updater on app startup
+    task = asyncio.create_task(priceupdate())
+    try:
+        yield
+    finally:
+        # Ensure background task is cancelled gracefully on shutdown
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
+app = FastAPI(lifespan=_lifespan)
 
 
 @app.get("/update-charges")
@@ -140,8 +154,13 @@ async def fetch_spot_price(dt: datetime.datetime) -> float:
     )
     async with httpx.AsyncClient() as client:
         resp = await client.get(url)
-        resp.raise_for_status()
+        # Support tests that mock these as async coroutines
+        res = resp.raise_for_status()
+        if asyncio.iscoroutine(res):
+            await res
         data = resp.json()
+        if asyncio.iscoroutine(data):
+            data = await data
     if data["records"]:
         eur_per_mwh = data["records"][0]["SpotPriceEUR"]
         dkk_per_kwh = eur_per_mwh * 7.45 / 1000
@@ -220,4 +239,4 @@ async def invoke_priceupdate():
         return SLEEPTIME
 
 
-background = asyncio.create_task(priceupdate())
+# Background task is created via FastAPI lifespan; nothing at import time.
