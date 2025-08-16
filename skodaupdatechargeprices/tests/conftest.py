@@ -5,11 +5,11 @@ when running `pytest` from the `skodaupdatechargeprices/` folder.
 Also provides minimal env + graypy stubs so get_logger works at import time.
 """
 
+import logging
 import os
 import sys
-from pathlib import Path
 import types
-import logging
+from pathlib import Path
 
 # Add repo root (parent of the 'skodaupdatechargeprices' package) to sys.path
 REPO_ROOT = str(Path(__file__).resolve().parents[2])
@@ -23,8 +23,14 @@ os.environ.setdefault("GRAYLOG_PORT", "12201")
 
 # Stub graypy to avoid requiring the dependency in unit tests
 if "graypy" not in sys.modules:
+
     class _DummyHandler(logging.Handler):
-        def __init__(self, _host: str | None = None, _port: int | None = None, level: int | None = None):
+        def __init__(
+            self,
+            _host: str | None = None,
+            _port: int | None = None,
+            level: int | None = None,
+        ):
             # Initialize with NOTSET to ensure .level exists; accept host/port like real GELFTCPHandler
             super().__init__(level=level or logging.NOTSET)
 
