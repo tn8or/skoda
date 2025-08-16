@@ -1,5 +1,5 @@
 fastapi
-mariadb
+pymysql
 uvicorn
 watchfiles
 graypy

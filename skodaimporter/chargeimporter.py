@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import time
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Optional
 
 # Optional MariaDB import to allow module import without DB driver in CI
@@ -230,39 +231,44 @@ async def root():
             count = cur.fetchone()[0]
             last_25_lines_joined += f"\n\nTotal logs in database: {count}\n"
             cur.execute(
-                "SELECT * FROM skoda.rawlogs order by log_timestamp desc limit 10"
+                "SELECT log_timestamp, log_message FROM skoda.rawlogs order by log_timestamp desc limit 10"
             )
+            rows = cur.fetchall()
         except Exception as e:
             my_logger.error("Error fetching from database: %s", e)
             conn.rollback()
             # Do not terminate the process on DB fetch failure; just rollback and return logs so far
-            pass
-        for log_timestamp, log_message in cur:
+            rows = []
+        for log_timestamp, log_message in rows:
             last_25_lines_joined += f"{log_timestamp} - {log_message}\n"
         return PlainTextResponse(last_25_lines_joined.encode("utf-8"))
 
 
-# Start/stop background runner with FastAPI lifecycle
+# Start/stop background runner with FastAPI lifespan
 _bg_task: Optional[asyncio.Task] = None
 
 
-@app.on_event("startup")
-async def _startup() -> None:
-    global _bg_task
-    _bg_task = asyncio.create_task(skodarunner())
-
-
-@app.on_event("shutdown")
-async def _shutdown() -> None:
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
     global _bg_task, myskoda
-    if _bg_task is not None:
-        _bg_task.cancel()
-        try:
-            await _bg_task
-        except asyncio.CancelledError:
-            pass
-    if myskoda is not None:
-        try:
-            await myskoda.disconnect()
-        except Exception:  # noqa: BLE001
-            pass
+    # Startup: kick off background runner
+    _bg_task = asyncio.create_task(skodarunner())
+    try:
+        yield
+    finally:
+        # Shutdown: cancel background task and disconnect client
+        if _bg_task is not None:
+            _bg_task.cancel()
+            try:
+                await _bg_task
+            except asyncio.CancelledError:
+                pass
+        if myskoda is not None:
+            try:
+                await myskoda.disconnect()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+# Attach lifespan to the app
+app.router.lifespan_context = lifespan

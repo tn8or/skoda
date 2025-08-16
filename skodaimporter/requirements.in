@@ -1,6 +1,6 @@
 fastapi
 httpx
-mariadb
+pymysql
 # Pin to a version available on PyPI; 2.x API matches our usage (subscribe_events, models)
 myskoda==2.3.3
 uvicorn

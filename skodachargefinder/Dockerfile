@@ -4,8 +4,8 @@ WORKDIR /app
 ARG TARGETPLATFORM
 RUN echo "I'm building for $TARGETPLATFORM"
 
-# Install system dependencies required for MariaDB and compilation
-RUN apk add --no-cache mariadb-client mariadb-connector-c-dev gcc musl-dev
+# Install system dependencies required for compilation
+RUN apk add --no-cache gcc musl-dev
 
 # Set up Python virtual environment
 ENV VIRTUAL_ENV=/opt/venv
@@ -66,7 +66,7 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 WORKDIR /app
 
 # Install only runtime dependencies (no build tools needed)
-RUN apk add --no-cache mariadb-connector-c curl
+RUN apk add --no-cache curl
 
 # Copy application code and virtual environment from build stage
 COPY --from=build /app /app

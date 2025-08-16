@@ -3,7 +3,7 @@ FROM python:3.13-alpine AS build
 WORKDIR /app
 ARG TARGETPLATFORM
 RUN echo "I'm building for $TARGETPLATFORM"
-RUN apk add --no-cache mariadb-client mariadb-connector-c-dev gcc musl-dev
+RUN apk add --no-cache gcc musl-dev
 
 ENV VIRTUAL_ENV=/opt/venv
 RUN python3 -m venv $VIRTUAL_ENV
@@ -20,7 +20,7 @@ FROM python:3.13-alpine AS final
 ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 WORKDIR /app
-RUN apk add --no-cache mariadb-connector-c curl
+RUN apk add --no-cache curl
 
 COPY . /app
 COPY --from=build /opt /opt

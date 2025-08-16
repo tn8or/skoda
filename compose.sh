@@ -9,4 +9,6 @@ echo ${folders} | xargs -P 8 -t -n 1 -I {} sh -c 'pip-compile --upgrade --output
 echo compiled requirements
 docker compose build
 fi
-docker compose $1
+if [ $1 != "build" ]; then
+docker compose $1 
+fi
