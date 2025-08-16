@@ -1,8 +1,8 @@
 fastapi
 httpx
 pymysql
-# Pin to a version available on PyPI; 2.x API matches our usage (subscribe_events, models)
-myskoda==2.3.3
+# Roll back due to missing charging events in 2.x
+myskoda==1.2.3
 uvicorn
 watchfiles
 graypy
