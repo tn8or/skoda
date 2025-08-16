@@ -116,19 +116,63 @@ async def on_event(event: Any) -> None:
                 "myskoda event enums not found; using name-based detection"
             )
 
-        if _is_service_event(event.type):
+        # Extract event_type and topic/name robustly across myskoda versions
+        event_type_val = getattr(event, "event_type", None)
+        if event_type_val is None:
+            event_type_val = getattr(event, "type", None)
+
+        # Helper to fetch event data object (supports both `event.data` and `data`)
+        data_obj = getattr(getattr(event, "event", None), "data", None)
+        if data_obj is None:
+            data_obj = getattr(event, "data", None)
+
+        # Decide if this is a service event using enums or names
+        if _is_service_event(event_type_val):
             api_result = await pull_api(CHARGEFINDER_URL, my_logger)
             my_logger.debug("API result: %s", api_result)
             my_logger.debug("Received service event.")
             await save_log_to_db("Received service event.")
-            if _is_charging_topic(event.topic):
-                my_logger.debug("Battery is %s%% charged.", event.event.data.soc)
-                await save_log_to_db(f"Battery is {event.event.data.soc}% charged.")
+            # Determine if this service event is related to charging
+            is_charging = False
+            # Primary: topic enum if available
+            topic_val = getattr(event, "topic", None)
+            if topic_val is not None and _is_charging_topic(topic_val):
+                is_charging = True
+            # Fallbacks: presence of SOC in data or name-based hints
+            name_val = getattr(event, "name", None)
+            if not is_charging and hasattr(data_obj, "soc"):
+                is_charging = True
+            if not is_charging and isinstance(getattr(name_val, "name", None), str):
+                is_charging = getattr(name_val, "name") in {
+                    "CHARGING",
+                    "CHARGING_STATUS_CHANGED",
+                    "START_CHARGING",
+                    "STOP_CHARGING",
+                }
+
+            if is_charging:
+                soc_val = None
+                if hasattr(data_obj, "soc"):
+                    soc_val = getattr(data_obj, "soc")
+                my_logger.debug("Charging-related event. SOC=%s", soc_val)
+                await save_log_to_db(f"Charging event detected. SOC={soc_val}")
                 await get_skoda_update(VIN)
                 charging = await myskoda.get_charging(VIN)
                 my_logger.debug("Charging data fetched.")
                 await save_log_to_db(f"Charging data fetched: {charging}")
                 my_logger.debug(charging)
+            else:
+                # Non-charging service events are informational; do not mark unhealthy
+                my_logger.info(
+                    "Ignoring non-charging service event: name=%s",
+                    getattr(name_val, "name", name_val),
+                )
+        else:
+            # Not a service event; ignore (e.g., VEHICLE_EVENT like VEHICLE_AWAKE)
+            my_logger.info(
+                "Ignoring non-service event: event_type=%s",
+                getattr(event_type_val, "name", event_type_val),
+            )
     except Exception as e:  # noqa: BLE001
         _mark_unhealthy(f"event processing failed: {e}")
 
