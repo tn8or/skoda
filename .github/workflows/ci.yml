@@ -22,8 +22,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.11"
 
+      - name: Install system deps (MariaDB Connector/C)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libmariadb-dev libmariadb3
       - name: Cache pip
         uses: actions/cache@v4
         with:
@@ -35,7 +39,9 @@ jobs:
       - name: Install dependencies (if present)
         working-directory: ${{ matrix.service }}
         run: |
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f requirements.txt ]; then \
+            (pip install -r requirements.txt) || (echo "Falling back due to missing system deps" && exit 1); \
+          fi
 
       - name: Install pytest (if tests exist)
         working-directory: ${{ matrix.service }}
