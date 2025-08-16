@@ -1,5 +1,5 @@
 """
-Basic test to diagnose import issues.
+Basic test to diagnose import issues (finder suite).
 """
 
 import os

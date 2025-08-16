@@ -8,6 +8,11 @@ import time
 import mariadb
 from fastapi import BackgroundTasks, FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
+from helpers import (
+    compute_daily_totals_home,
+    compute_session_summary,
+    group_sessions_by_mileage,
+)
 
 from commons import db_connect, get_logger, load_secret
 
@@ -83,27 +88,8 @@ async def root(
         for r in rows
     ]
 
-    # Group into sessions by mileage only (plug-in until drive off), collapsing duplicates
-    sessions_map = {}
-    for rec in hourly:
-        key = rec["mileage"]
-        if key not in sessions_map:
-            sessions_map[key] = {
-                "mileage": key,
-                "rows": [],
-                "start": None,
-                "end": None,
-            }
-        sess = sessions_map[key]
-        sess["rows"].append(rec)
-        st = rec["start_at"] or rec["log_timestamp"]
-        sp = rec["stop_at"] or rec["log_timestamp"]
-        if st and (sess["start"] is None or st < sess["start"]):
-            sess["start"] = st
-        if sp and (sess["end"] is None or sp > sess["end"]):
-            sess["end"] = sp
-    # Convert to list, sort by end time
-    sessions = sorted(sessions_map.values(), key=lambda s: (s["end"] or s["start"] or datetime.datetime.min))
+    # Group hourly rows to sessions by mileage
+    sessions = group_sessions_by_mileage(hourly)
 
     prev_month = month - 1
     prev_year = year
@@ -207,19 +193,8 @@ async def root(
                         </div>
                         <div class="divTableBody">
     """
-    # Compute daily totals from hourly rows (by stop_at date)
-    from collections import defaultdict
-
-    daily = defaultdict(lambda: {"kwh": 0.0, "dkk": 0.0})
-    for rec in hourly:
-        dt = rec["stop_at"]
-        if not dt:
-            continue
-        d = dt.date()
-        # Daily totals should avoid away charges entirely
-        if rec["position"] == "home":
-            daily[d]["kwh"] += rec["amount"]
-            daily[d]["dkk"] += rec["price"]
+    # Compute daily totals for home-only rows
+    daily = compute_daily_totals_home(hourly)
 
     for d in sorted(daily.keys()):
         kwh = round(daily[d]["kwh"], 2)
@@ -252,23 +227,19 @@ async def root(
                     </div>
                     <div class="divTableBody">
     """
-    # Compute month-wide mileage change across sessions
-    min_mileage = min(
-        (s["mileage"] for s in sessions if s["mileage"] is not None), default=0
-    )
-    max_mileage = max(
-        (s["mileage"] for s in sessions if s["mileage"] is not None), default=0
-    )
-    totalmileage = (max_mileage - min_mileage) if max_mileage and min_mileage else 0
+    # We'll compute totalmileage for the footer after iterating sessions
+    totalmileage = 0
 
     for sess in sessions:
         sess_rows = sess["rows"]
         mileage = sess["mileage"]
         stopped_at = sess["end"]
-        # Sums
-        amount = round(sum(r["amount"] for r in sess_rows), 2)
-        any_away = any(r["position"] != "home" for r in sess_rows)
-        price = 0.0 if any_away else round(sum(r["price"] for r in sess_rows), 2)
+        # Session summary with away policy
+        summary = compute_session_summary(sess_rows)
+        amount = summary["amount"]
+        price = summary["price"]
+        any_away = summary["any_away"]
+        position = summary["position"]
         # Range aggregation
         charged_range_vals = [
             r["charged_range"] for r in sess_rows if r["charged_range"] is not None
@@ -282,7 +253,6 @@ async def root(
             range_diff = max(charged_range_vals) - min(start_range_vals)
         soc_vals = [r["soc"] for r in sess_rows if r["soc"] is not None]
         soc = soc_vals[-1] if soc_vals else None
-        position = "away" if any_away else "home"
         range_per_kwh = (
             round(range_diff / amount, 2) if amount > 0 and range_diff > 0 else 0
         )
@@ -317,6 +287,10 @@ async def root(
                             <div class=\"divTableCell text-white\">{position}</div>\n
                         </div>
         """
+    # Compute month-wide mileage change across sessions for footer
+    miles = [s["mileage"] for s in sessions if s.get("mileage") is not None]
+    if miles:
+        totalmileage = max(miles) - min(miles)
     avg_range_per_kwh = round(totalmileage / total_amount, 2) if total_amount > 0 else 0
     html += f"""
                     </div>

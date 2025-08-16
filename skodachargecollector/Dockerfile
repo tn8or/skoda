@@ -15,6 +15,9 @@ COPY ./requirements.txt /tmp
 
 RUN . /opt/venv/bin/activate && pip install --no-cache-dir --upgrade -r /tmp/requirements.txt
 
+# Include application source for downstream stages
+COPY . /app
+
 # Test stage - MANDATORY - runs tests before building final image
 FROM build AS test
 
@@ -27,8 +30,7 @@ RUN . /opt/venv/bin/activate && pip install --no-cache-dir \
     pytest-mock>=3.10.0 \
     pytest-cov>=4.0.0
 
-# Copy source code and tests (ensure tests directory exists)
-COPY . /app
+# Source already present from build stage
 WORKDIR /app
 
 # Verify test files exist before running
@@ -63,8 +65,8 @@ WORKDIR /app
 # Install only runtime dependencies (no build tools needed)
 RUN apk add --no-cache mariadb-connector-c curl
 
-# Copy application code and virtual environment from build stage
-COPY --from=test /app /app
+# Copy application code and virtual environment from build stage only
+COPY --from=build /app /app
 COPY --from=build /opt/venv /opt/venv
 
 # Health check to ensure service is running correctly
