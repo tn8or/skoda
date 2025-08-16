@@ -1,6 +1,6 @@
 import asyncio
+import importlib
 import json
-import os
 import time
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Optional
@@ -19,11 +19,12 @@ from commons import CHARGEFINDER_URL, db_connect, get_logger, load_secret, pull_
 # Optional type-only imports to keep runtime import free when myskoda is missing
 if TYPE_CHECKING:  # pragma: no cover - import only for type checkers
     from myskoda import MySkoda as MySkodaType
-    from myskoda.event import Event as MySkodaEvent
-    from myskoda.models.charging import Charging as MySkodaCharging
-    from myskoda.models.health import Health as MySkodaHealth
-    from myskoda.models.position import PositionType as MySkodaPositionType
-    from myskoda.models.status import Status as MySkodaStatus
+
+    MySkodaEvent = Any
+    MySkodaCharging = Any
+    MySkodaHealth = Any
+    MySkodaPositionType = Any
+    MySkodaStatus = Any
 VIN = ""
 # Global myskoda client; initialized in skodarunner() when myskoda is available...
 myskoda: Optional[Any] = None
@@ -67,19 +68,60 @@ async def on_event(event: Any) -> None:
         await save_log_to_db(event_json)
         print(event)
         last_event_received = time.time()
-        # Lazy import enums to avoid module import at import time
-        try:
-            from myskoda.event import EventType as _EventType
-            from myskoda.event import ServiceEventTopic as _ServiceEventTopic
-        except Exception:
-            my_logger.error("myskoda not available; cannot process events")
-            return
-        if event.type == _EventType.SERVICE_EVENT:
+
+        # Resolve event enums from various possible module paths, with graceful fallback
+        def _resolve_event_enums():
+            candidates = (
+                "myskoda.event",
+                "myskoda.events",
+                "myskoda.models.event",
+                "myskoda.models.events",
+            )
+            for mod in candidates:
+                try:
+                    m = importlib.import_module(mod)
+                    my_logger.debug("Resolved myskoda event enums from %s", mod)
+                    return getattr(m, "EventType"), getattr(m, "ServiceEventTopic")
+                except Exception:  # noqa: BLE001
+                    continue
+            return None, None
+
+        _EventType, _ServiceEventTopic = _resolve_event_enums()
+
+        # Determine event kind even if enums can't be imported
+        def _is_service_event(t: Any) -> bool:
+            if _EventType is not None:
+                try:
+                    return t == _EventType.SERVICE_EVENT
+                except Exception:  # noqa: BLE001
+                    pass
+            name = getattr(t, "name", None)
+            if isinstance(name, str):
+                return name == "SERVICE_EVENT"
+            return str(t).endswith("SERVICE_EVENT")
+
+        def _is_charging_topic(topic: Any) -> bool:
+            if _ServiceEventTopic is not None:
+                try:
+                    return topic == _ServiceEventTopic.CHARGING
+                except Exception:  # noqa: BLE001
+                    pass
+            name = getattr(topic, "name", None)
+            if isinstance(name, str):
+                return name == "CHARGING"
+            return str(topic).endswith("CHARGING")
+
+        if _EventType is None or _ServiceEventTopic is None:
+            my_logger.warning(
+                "myskoda event enums not found; using name-based detection"
+            )
+
+        if _is_service_event(event.type):
             api_result = await pull_api(CHARGEFINDER_URL, my_logger)
             my_logger.debug("API result: %s", api_result)
             my_logger.debug("Received service event.")
             await save_log_to_db("Received service event.")
-            if event.topic == _ServiceEventTopic.CHARGING:
+            if _is_charging_topic(event.topic):
                 my_logger.debug("Battery is %s%% charged.", event.event.data.soc)
                 await save_log_to_db(f"Battery is {event.event.data.soc}% charged.")
                 await get_skoda_update(VIN)
