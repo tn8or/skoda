@@ -36,11 +36,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      - name: Install dependencies (if present)
+      - name: Install dependencies (only when tests exist)
         working-directory: ${{ matrix.service }}
         run: |
-          if [ -f requirements.txt ]; then \
-            (pip install -r requirements.txt) || (echo "Falling back due to missing system deps" && exit 1); \
+          if [ -d tests ]; then \
+            if [ -f requirements.txt ]; then pip install -r requirements.txt; fi; \
+          else \
+            echo "No tests in ${{ matrix.service }}, skipping dependency install"; \
           fi
 
       - name: Install pytest (if tests exist)
