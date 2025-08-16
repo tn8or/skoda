@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import time
+from zoneinfo import ZoneInfo
 
 import mariadb
 from fastapi import BackgroundTasks, FastAPI, Query, Request
@@ -22,6 +23,9 @@ lastlat = 0
 lastlon = 0
 my_logger = get_logger("skodachargefrontendlogger")
 my_logger.warning("Starting the application...")
+
+# Local timezone for all displayed timestamps
+TZ_CPH = ZoneInfo("Europe/Copenhagen")
 
 
 async def ordinal(n):
@@ -44,6 +48,23 @@ async def root(
     git_tag = os.environ.get("GIT_TAG", "")
     build_date = os.environ.get("BUILD_DATE", "")
     short_commit = git_commit[:7] if git_commit else ""
+
+    # Parse and localize build date if present
+    def _fmt_build_date(s: str) -> str:
+        if not s:
+            return ""
+        try:
+            iso = s
+            if iso.endswith("Z"):
+                iso = iso[:-1] + "+00:00"
+            dt = datetime.datetime.fromisoformat(iso)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=datetime.timezone.utc)
+            return dt.astimezone(TZ_CPH).strftime("%Y-%m-%d %H:%M:%S %Z")
+        except Exception:
+            return s
+
+    build_date_local = _fmt_build_date(build_date)
     conn, cur = await db_connect(my_logger)
     start_date = datetime.date(year, month, 1)
     if month == 12:
@@ -131,7 +152,10 @@ async def root(
                         <a href="/?year={next_year}&month={next_month}" class="text-blue-400 hover:underline">Next Month &raquo;</a>
                     </div>
                     <div class="text-center mt-8 text-gray-400 text-sm">
-                        Build: {git_tag or 'untagged'} {short_commit or ''} {f'({build_date})' if build_date else ''}
+                        Build:
+                        {git_tag or 'untagged'}
+                        {f'<a class="underline" href="https://github.com/tn8or/skoda/commit/{git_commit}" target="_blank" rel="noopener noreferrer">{short_commit}</a>' if git_commit else ''}
+                        {f'({build_date_local})' if build_date_local else ''}
                     </div>
                 </div>
             </section>
@@ -276,8 +300,14 @@ async def root(
                     dt = datetime.datetime.fromisoformat(stopped_at)
                 else:
                     dt = stopped_at
-                day = await ordinal(dt.day)
-                stopped_at_str = dt.strftime("%a ") + day + " @ " + dt.strftime("%H:%M")
+                # Assume naive as UTC, then convert to local time
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=datetime.timezone.utc)
+                dt_local = dt.astimezone(TZ_CPH)
+                day = await ordinal(dt_local.day)
+                stopped_at_str = (
+                    dt_local.strftime("%a ") + day + " @ " + dt_local.strftime("%H:%M")
+                )
             except Exception:
                 stopped_at_str = str(stopped_at)
         else:
@@ -325,7 +355,11 @@ async def root(
                     <a href="/?year={next_year}&month={next_month}" class="text-blue-400 hover:underline">Next Month &raquo;</a>
                 </div>
                 <div class="text-center mt-4 text-gray-400 text-sm">
-                    Build: {git_tag or 'untagged'} {short_commit or ''} {f'({build_date})' if build_date else ''} - <a href="https://github.com/tn8or/skoda/">https://github.com/tn8or/skoda/</a>
+                    Build:
+                    {git_tag or 'untagged'}
+                    {f'<a class="underline" href="https://github.com/tn8or/skoda/commit/{git_commit}" target="_blank" rel="noopener noreferrer">{short_commit}</a>' if git_commit else ''}
+                    {f'({build_date_local})' if build_date_local else ''}
+                    - <a class="underline" href="https://github.com/tn8or/skoda/" target="_blank" rel="noopener noreferrer">github.com/tn8or/skoda</a>
                 </div>
             </div>
         </section>
