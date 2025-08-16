@@ -1,6 +1,12 @@
 import os
+
 import httpx
-import mariadb
+
+# Optional MariaDB import so modules can import without DB driver present
+try:  # pragma: no cover - optional dependency handling
+    import mariadb  # type: ignore
+except Exception:  # noqa: BLE001
+    mariadb = None  # type: ignore
 
 SECRET_PATHS = [
     "/etc/secrets/tronity",
@@ -47,11 +53,17 @@ def load_secret(secret):
         for path in SECRET_PATHS:
             filepath = path + "/" + secret
             if os.path.exists(filepath):
-                content = open(filepath).read().rstrip("\n")
+                with open(filepath, encoding="utf-8") as f:
+                    content = f.read().rstrip("\n")
                 return content
 
 
 async def db_connect(my_logger):
+    if mariadb is None:
+        my_logger.error(
+            "MariaDB driver not available; database disabled in this environment"
+        )
+        return False
     try:
         my_logger.debug("Connecting to MariaDB...")
         conn = mariadb.connect(
@@ -65,13 +77,14 @@ async def db_connect(my_logger):
         my_logger.debug("Connected to MariaDB")
         cur = conn.cursor()
         return conn, cur
-    except mariadb.Error as e:
+    except Exception as e:  # noqa: BLE001
         my_logger.error("Error connecting to MariaDB Platform: %s", e)
         return False
 
 
 def get_logger(name):
     import logging
+
     import graypy
 
     env = load_secret("env")

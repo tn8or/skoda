@@ -1,7 +1,8 @@
 fastapi
 httpx
 mariadb
-myskoda==1.2.3
+# Pin to a version available on PyPI; 2.x API matches our usage (subscribe_events, models)
+myskoda==2.3.3
 uvicorn
 watchfiles
 graypy

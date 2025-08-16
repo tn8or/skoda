@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - skodachargecollector
+          - skodachargefinder
+          - skodachargefrontend
+          - skodaupdatechargeprices
+          - skodaimporter
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system deps (MariaDB Connector/C)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libmariadb-dev libmariadb3
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles(format('{0}/requirements.txt', matrix.service)) }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies (only when tests exist)
+        working-directory: ${{ matrix.service }}
+        run: |
+          if [ -d tests ]; then \
+            if [ -f requirements.txt ]; then pip install -r requirements.txt; fi; \
+          else \
+            echo "No tests in ${{ matrix.service }}, skipping dependency install"; \
+          fi
+
+      - name: Install pytest (if tests exist)
+        working-directory: ${{ matrix.service }}
+        run: |
+          if [ -d tests ]; then pip install pytest pytest-cov pytest-asyncio; fi
+
+      - name: Run tests (if tests exist)
+        working-directory: ${{ matrix.service }}
+        run: |
+          if [ -d tests ]; then pytest -q; else echo "No tests in ${{ matrix.service }}, skipping"; fi
