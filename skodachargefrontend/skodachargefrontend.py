@@ -39,6 +39,11 @@ async def root(
     year: int = Query(datetime.datetime.now().year, ge=2025, le=2027),
     month: int = Query(datetime.datetime.now().month, ge=1, le=12),
 ):
+    # Build/commit meta for footer
+    git_commit = os.environ.get("GIT_COMMIT", "")
+    git_tag = os.environ.get("GIT_TAG", "")
+    build_date = os.environ.get("BUILD_DATE", "")
+    short_commit = git_commit[:7] if git_commit else ""
     conn, cur = await db_connect(my_logger)
     start_date = datetime.date(year, month, 1)
     if month == 12:
@@ -124,6 +129,9 @@ async def root(
                         <a href="/" class="text-blue-400 hover:underline">Home</a>
                         <span class="mx-2 text-white">|</span>
                         <a href="/?year={next_year}&month={next_month}" class="text-blue-400 hover:underline">Next Month &raquo;</a>
+                    </div>
+                    <div class="text-center mt-8 text-gray-400 text-sm">
+                        Build: {git_tag or 'untagged'} {short_commit or ''} {f'({build_date})' if build_date else ''}
                     </div>
                 </div>
             </section>
@@ -315,6 +323,9 @@ async def root(
                     <a href="/" class="text-blue-400 hover:underline">Home</a>
                     <span class="mx-2 text-white">|</span>
                     <a href="/?year={next_year}&month={next_month}" class="text-blue-400 hover:underline">Next Month &raquo;</a>
+                </div>
+                <div class="text-center mt-4 text-gray-400 text-sm">
+                    Build: {git_tag or 'untagged'} {short_commit or ''} {f'({build_date})' if build_date else ''} - <a href="https://github.com/tn8or/skoda/">https://github.com/tn8or/skoda/</a>
                 </div>
             </div>
         </section>

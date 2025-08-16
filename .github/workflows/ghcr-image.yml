@@ -31,6 +31,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
@@ -58,6 +60,16 @@ jobs:
             type=ref,event=tag
             type=sha
 
+      - name: Compute build args (commit, tag, date)
+        id: buildargs
+        shell: bash
+        run: |
+          echo "GIT_COMMIT=${GITHUB_SHA}" >> $GITHUB_ENV
+          # Best-effort tag description; falls back to short SHA
+          TAG=$(git describe --tags --always --dirty || echo)
+          echo "GIT_TAG=${TAG}" >> $GITHUB_ENV
+          echo "BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_ENV
+
       - name: Build and push Docker image
         if: github.actor != 'dependabot[bot]'
         uses: docker/build-push-action@v4
@@ -68,6 +80,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_COMMIT=${{ env.GIT_COMMIT }}
+            GIT_TAG=${{ env.GIT_TAG }}
+            BUILD_DATE=${{ env.BUILD_DATE }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

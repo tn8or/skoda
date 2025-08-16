@@ -22,6 +22,14 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 WORKDIR /app
 RUN apk add --no-cache curl
 
+# Optional build metadata injected at build time via --build-arg
+ARG GIT_COMMIT=""
+ARG GIT_TAG=""
+ARG BUILD_DATE=""
+ENV GIT_COMMIT="$GIT_COMMIT"
+ENV GIT_TAG="$GIT_TAG"
+ENV BUILD_DATE="$BUILD_DATE"
+
 COPY . /app
 COPY --from=build /opt /opt
 
