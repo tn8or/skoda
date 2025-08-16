@@ -15,6 +15,4 @@ docker compose build \
 	--build-arg GIT_TAG="${GIT_TAG}" \
 	--build-arg BUILD_DATE="${BUILD_DATE}"
 fi
-if [ $1 != "build" ]; then
 docker compose $1
-fi
