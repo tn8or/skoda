@@ -154,13 +154,58 @@ async def on_event(event: Any) -> None:
             }:
                 is_charging = True
 
+        # Additional triggers:
+        # 1) CHANGE_ACCESS service event should trigger a charge status fetch
+        trigger_change_access = False
+        if (
+            isinstance(name_hint, str)
+            and name_hint.upper() == "CHANGE_ACCESS"
+            and _is_service_event(event_type_val)
+        ):
+            trigger_change_access = True
+
+        # 2) Operation events like STOP_CHARGING when COMPLETED_SUCCESS
+        op_val = getattr(event, "operation", None)
+        op_name_raw = getattr(op_val, "name", None)
+        op_hint = (
+            op_name_raw
+            if isinstance(op_name_raw, str)
+            else (str(op_val) if op_val is not None else "")
+        )
+        status_val = getattr(event, "status", None)
+        status_name_raw = getattr(status_val, "name", None)
+        status_hint = (
+            status_name_raw
+            if isinstance(status_name_raw, str)
+            else (str(status_val) if status_val is not None else "")
+        )
+        trigger_operation_stop_completed = False
+        if op_hint:
+            OU = op_hint.upper()
+            SU = (
+                status_hint.upper()
+                if isinstance(status_hint, str)
+                else str(status_hint).upper()
+            )
+            if ("CHARG" in OU or OU in {"STOP_CHARGING", "START_CHARGING"}) and SU in {
+                "COMPLETED_SUCCESS"
+            }:
+                trigger_operation_stop_completed = True
+
+        # Combine triggers
+        is_charging = (
+            is_charging or trigger_change_access or trigger_operation_stop_completed
+        )
+
         is_service = _is_service_event(event_type_val)
         # Emit a classification log
         my_logger.debug(
-            "Event classified: service=%s topic=%s name=%s charging=%s",
+            "Event classified: service=%s topic=%s name=%s op=%s status=%s charging=%s",
             is_service,
             getattr(getattr(topic_val, "name", topic_val), "name", topic_val),
             name_hint,
+            op_hint,
+            status_hint,
             is_charging,
         )
 

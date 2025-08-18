@@ -75,3 +75,67 @@ async def test_on_event_handles_service_event():
             event.topic = Topic.CHARGING
             event.event.data.soc = 50
             await m.on_event(event)
+
+
+@pytest.mark.asyncio
+async def test_on_event_triggers_on_change_access_service_event():
+    m = import_with_stubs()
+
+    class EType:
+        SERVICE_EVENT = object()
+
+    class Topic:
+        OTHER = object()
+
+    sys.modules["myskoda.event"].EventType = EType
+    sys.modules["myskoda.event"].ServiceEventTopic = Topic
+
+    with patch(
+        "skodaimporter.chargeimporter.pull_api",
+        new=AsyncMock(return_value={"ok": True}),
+    ):
+        with patch("skodaimporter.chargeimporter.save_log_to_db", new=AsyncMock()):
+            m.myskoda = MagicMock()
+            m.myskoda.get_charging = AsyncMock(return_value={"c": 1})
+            m.myskoda.get_health = AsyncMock(return_value=MagicMock(mileage_in_km=1))
+            m.myskoda.get_info = AsyncMock(return_value={"i": 1})
+            m.myskoda.get_status = AsyncMock(return_value={"s": 1})
+            m.myskoda.get_positions = AsyncMock(return_value=MagicMock(positions=[]))
+
+            event = MagicMock()
+            # A service event with name CHANGE_ACCESS and no charging topic should still trigger
+            event.event_type = EType.SERVICE_EVENT
+            event.name = type("Name", (), {"name": "CHANGE_ACCESS"})()
+            event.topic = Topic.OTHER
+            event.data = MagicMock()
+            await m.on_event(event)
+
+
+@pytest.mark.asyncio
+async def test_on_event_triggers_on_operation_stop_completed():
+    m = import_with_stubs()
+
+    class EType:
+        OPERATION = object()
+
+    sys.modules["myskoda.event"].EventType = EType
+    # For this test, topic isn't relevant
+
+    with patch(
+        "skodaimporter.chargeimporter.pull_api",
+        new=AsyncMock(return_value={"ok": True}),
+    ):
+        with patch("skodaimporter.chargeimporter.save_log_to_db", new=AsyncMock()):
+            m.myskoda = MagicMock()
+            m.myskoda.get_charging = AsyncMock(return_value={"c": 1})
+            m.myskoda.get_health = AsyncMock(return_value=MagicMock(mileage_in_km=1))
+            m.myskoda.get_info = AsyncMock(return_value={"i": 1})
+            m.myskoda.get_status = AsyncMock(return_value={"s": 1})
+            m.myskoda.get_positions = AsyncMock(return_value=MagicMock(positions=[]))
+
+            event = MagicMock()
+            event.event_type = EType.OPERATION
+            event.operation = type("Op", (), {"name": "STOP_CHARGING"})()
+            event.status = type("St", (), {"name": "COMPLETED_SUCCESS"})()
+            event.data = MagicMock()
+            await m.on_event(event)
