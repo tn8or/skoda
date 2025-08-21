@@ -3,11 +3,11 @@ name: pip-audit
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   schedule:
-    - cron: '0 5 * * 1' # Mondays 05:00 UTC
+    - cron: "0 5 * * 1" # Mondays 05:00 UTC
 
 permissions:
   contents: read
@@ -17,7 +17,14 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [ skodaimporter, skodachargefinder, skodachargefrontend, skodaupdatechargeprices, skodachargecollector ]
+        service:
+          [
+            skodaimporter,
+            skodachargefinder,
+            skodachargefrontend,
+            skodaupdatechargeprices,
+            skodachargecollector,
+          ]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,7 +32,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: "3.13"
 
       - name: Install dependencies
         working-directory: ${{ matrix.service }}

@@ -6,7 +6,6 @@ import os
 import time
 from zoneinfo import ZoneInfo
 
-import mariadb
 from fastapi import BackgroundTasks, FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from helpers import (
@@ -15,6 +14,7 @@ from helpers import (
     group_sessions_by_mileage,
 )
 
+import mariadb
 from commons import db_connect, get_logger, load_secret
 
 lastsoc = 0

@@ -347,11 +347,16 @@ async def skodarunner() -> None:
                         await asyncio.sleep(1)
                 except asyncio.CancelledError:
                     my_logger.info("Background task cancelled, shutting down...")
+                    # Propagate cancellation to outer loop
+                    raise
                 finally:
                     try:
                         await myskoda.disconnect()
                     except Exception:  # noqa: BLE001
                         pass
+        except asyncio.CancelledError:
+            my_logger.info("Background runner cancelled, exiting...")
+            break
         except Exception as e:  # noqa: BLE001
             _mark_unhealthy(f"background runner error: {e}")
             await asyncio.sleep(backoff)
