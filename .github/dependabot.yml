@@ -5,13 +5,24 @@
 
 version: 2
 updates:
-  - package-ecosystem: "pip" # See documentation for possible values
-    directories:
-    - "/skodachargecollector/requirements.txt"
-    - "/skodachargefinder/requirements.txt"
-    - "/skodachargefrontend/requirements.txt"
-    - "/skodaimporter/requirements.txt"
-    - "/skodaupdatechargeprices/requirements.txt"
+  # Keep GitHub Actions up to date weekly
+  - package-ecosystem: "github-actions"
+    directory: "/"
     schedule:
       interval: "weekly"
-      
+
+  # Configure pip updates: scan for security advisories, but do not open
+  # version bump PRs (we handle bumps via update-deps workflow).
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    allow:
+      - dependency-type: "all"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+          - version-update:semver-patch
+
