@@ -4,6 +4,7 @@ services:
     image: ghcr.io/tn8or/skodaimporter:latest
     restart: always
     hostname: skodaimporter
+    stop_grace_period: 60s
     environment:
       SKODA_USER: ${SKODA_USER}
       SKODA_PASS: ${SKODA_PASS}
@@ -19,6 +20,7 @@ services:
     image: ghcr.io/tn8or/skodachargefinder:latest
     restart: always
     hostname: skodachargefinder
+    stop_grace_period: 60s
     environment:
       SKODA_USER: ${SKODA_USER}
       SKODA_PASS: ${SKODA_PASS}
@@ -34,6 +36,7 @@ services:
     image: ghcr.io/tn8or/skodachargecollector:latest
     restart: always
     hostname: skodachargecollector
+    stop_grace_period: 60s
     environment:
       SKODA_USER: ${SKODA_USER}
       SKODA_PASS: ${SKODA_PASS}
@@ -49,6 +52,7 @@ services:
     image: ghcr.io/tn8or/skodaupdatechargeprices:latest
     restart: always
     hostname: skodaupdatechargeprices
+    stop_grace_period: 60s
     environment:
       SKODA_USER: ${SKODA_USER}
       SKODA_PASS: ${SKODA_PASS}
@@ -64,6 +68,7 @@ services:
     image: ghcr.io/tn8or/skodachargefrontend:latest
     restart: always
     hostname: skodachargefrontend
+    stop_grace_period: 60s
     networks:
       - ix-nginx-proxy-manager_default
     environment:
