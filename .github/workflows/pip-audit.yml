@@ -1,0 +1,41 @@
+name: pip-audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 5 * * 1' # Mondays 05:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [ skodaimporter, skodachargefinder, skodachargefrontend, skodaupdatechargeprices, skodachargecollector ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.service }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pip-audit
+
+      - name: Run pip-audit
+        working-directory: ${{ matrix.service }}
+        run: |
+          # Fail on vulnerabilities; ignore development-only extras
+          pip-audit --requirement requirements.txt --progress-spinner off
