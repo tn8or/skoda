@@ -78,6 +78,61 @@ async def test_on_event_handles_service_event():
 
 
 @pytest.mark.asyncio
+async def test_get_skoda_update_handles_no_positions_gracefully():
+    m = import_with_stubs()
+
+    class FakeSkoda:
+        async def get_health(self, vin):
+            class H:
+                mileage_in_km = 123
+
+            return H()
+
+        async def get_info(self, vin):
+            return {"i": 1}
+
+        async def get_status(self, vin):
+            return {"s": 1}
+
+        async def get_positions(self, vin):
+            class R:
+                positions = []
+
+            return R()
+
+    m.myskoda = FakeSkoda()
+    with patch("skodaimporter.chargeimporter.save_log_to_db", new=AsyncMock()):
+        # Should not raise
+        await m.get_skoda_update("VIN")
+
+
+@pytest.mark.asyncio
+async def test_get_skoda_update_handles_positions_exception_gracefully():
+    m = import_with_stubs()
+
+    class FakeSkoda:
+        async def get_health(self, vin):
+            class H:
+                mileage_in_km = 123
+
+            return H()
+
+        async def get_info(self, vin):
+            return {"i": 1}
+
+        async def get_status(self, vin):
+            return {"s": 1}
+
+        async def get_positions(self, vin):
+            raise RuntimeError("positions failed")
+
+    m.myskoda = FakeSkoda()
+    with patch("skodaimporter.chargeimporter.save_log_to_db", new=AsyncMock()):
+        # Should not raise
+        await m.get_skoda_update("VIN")
+
+
+@pytest.mark.asyncio
 async def test_on_event_triggers_on_change_access_service_event():
     m = import_with_stubs()
 

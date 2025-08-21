@@ -261,20 +261,40 @@ async def get_skoda_update(vin: str) -> None:
             from myskoda.models.position import PositionType as _PositionType
         except Exception:
             _PositionType = None  # type: ignore
-        pos = next(
-            pos
-            for pos in (await myskoda.get_positions(vin)).positions
-            if (_PositionType is None) or (pos.type == _PositionType.VEHICLE)
-        )
-        my_logger.debug(
-            "lat: %s, lng: %s",
-            pos.gps_coordinates.latitude,
-            pos.gps_coordinates.longitude,
-        )
-        my_logger.debug("Vehicle positions fetched.")
-        await save_log_to_db(
-            f"Vehicle positions fetched: lat: {pos.gps_coordinates.latitude}, lng: {pos.gps_coordinates.longitude}"
-        )
+        try:
+            positions_resp = await myskoda.get_positions(vin)
+            positions = getattr(positions_resp, "positions", None) or []
+            # Prefer VEHICLE position when enum is available; otherwise first position
+            pos = None
+            if positions:
+                if _PositionType is not None:
+                    for p in positions:
+                        try:
+                            if p.type == _PositionType.VEHICLE:
+                                pos = p
+                                break
+                        except Exception:  # noqa: BLE001
+                            continue
+                # Fallback to first if none matched
+                if pos is None:
+                    pos = positions[0]
+            if pos is None:
+                my_logger.warning("No vehicle positions available")
+                await save_log_to_db("No vehicle positions available")
+            else:
+                my_logger.debug(
+                    "lat: %s, lng: %s",
+                    pos.gps_coordinates.latitude,
+                    pos.gps_coordinates.longitude,
+                )
+                my_logger.debug("Vehicle positions fetched.")
+                await save_log_to_db(
+                    f"Vehicle positions fetched: lat: {pos.gps_coordinates.latitude}, lng: {pos.gps_coordinates.longitude}"
+                )
+        except Exception as e:
+            # Do not mark unhealthy for positions-only issues; continue gracefully
+            my_logger.warning("Fetching vehicle positions failed: %s", e)
+            await save_log_to_db(f"Fetching vehicle positions failed: {e}")
     except Exception as e:  # noqa: BLE001
         _mark_unhealthy(f"get_skoda_update failed: {e}")
         raise
