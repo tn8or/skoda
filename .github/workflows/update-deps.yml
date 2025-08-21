@@ -42,6 +42,7 @@ jobs:
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v7
         with:
+          token: ${{ secrets.DEP_UPDATER_TOKEN }}
           commit-message: |-
             chore(deps): weekly pip-compile upgrade
 
