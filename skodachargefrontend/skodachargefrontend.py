@@ -261,6 +261,7 @@ async def root(
     """
     # We'll compute totalmileage for the footer after iterating sessions
     totalmileage = 0
+    displayed_count = 0
 
     for sess in sessions:
         sess_rows = sess["rows"]
@@ -312,6 +313,11 @@ async def root(
                 stopped_at_str = str(stopped_at)
         else:
             stopped_at_str = ""
+        # Filter out small sessions from display (< 1.0 kWh), but keep them in totals
+        if amount < 1.0:
+            continue
+        displayed_count += 1
+
         html += f"""
                         <div class=\"divTableRow\">\n
                             <div class=\"divTableCell text-white\">{stopped_at_str}</div>\n
@@ -334,7 +340,7 @@ async def root(
                     </div>
             <div class="divTableFoot">
                         <div class="divTableRow font-bold">
-                <div class="divTableCell">{len(sessions)} charges</div>
+                <div class="divTableCell">{displayed_count} charges</div>
                             <div class="divTableCell">{totalmileage} KM</div>
                             <div class="divTableCell">{total_amount:.2f} kWh</div>
                             <div class="divTableCell">{total_price:.2f} DKK</div>
