@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   audit:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         service:
