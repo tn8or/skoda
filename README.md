@@ -99,3 +99,5 @@ This project is licensed under the MIT License. See the LICENSE file for details
 
 Author
 Mostly github copilot, and a bit by Tommy Eriksen
+
+
