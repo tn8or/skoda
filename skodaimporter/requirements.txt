@@ -72,13 +72,13 @@ pydantic-core==2.33.2
     # via pydantic
 pyjwt==2.10.1
     # via myskoda
-pymysql==1.1.1
+pymysql==1.1.2
     # via -r requirements.in
 pyyaml==6.0.2
     # via myskoda
 sniffio==1.3.1
     # via anyio
-starlette==0.47.2
+starlette==0.47.3
     # via fastapi
 typing-extensions==4.14.1
     # via
