@@ -5,7 +5,7 @@ import logging
 import os
 import time
 from zoneinfo import ZoneInfo
-
+import html
 from fastapi import BackgroundTasks, FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from helpers import (
@@ -132,7 +132,7 @@ async def root(
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Charge Summary for {year}-{month:02d}</title>
+            <title>Charge Summary for {html.escape(str(year))}-{html.escape(f"{month:02d}")}</title>
             <link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
         </head>
         <body class="bg-black">
@@ -140,16 +140,16 @@ async def root(
                 <div class="container px-5 py-12 mx-auto lg:px-20">
                     <div class="flex flex-col flex-wrap pb-6 mb-12 text-white">
                         <h1 class="mb-12 text-3xl font-medium text-white">
-                            Charge Summary for {year}-{month:02d}
+                            Charge Summary for {html.escape(str(year))}-{html.escape(f"{month:02d}")} 
                         </h1>
                         <p class="text-white text-xl">No charge data found for this month.</p>
                     </div>
                     <div class="text-center mt-8">
-                        <a href="/?year={prev_year}&month={prev_month}" class="text-blue-400 hover:underline">&laquo; Previous Month</a>
+                        <a href="/?year={html.escape(str(prev_year))}&month={html.escape(str(prev_month))}" class="text-blue-400 hover:underline">&laquo; Previous Month</a>
                         <span class="mx-2 text-white">|</span>
                         <a href="/" class="text-blue-400 hover:underline">Home</a>
                         <span class="mx-2 text-white">|</span>
-                        <a href="/?year={next_year}&month={next_month}" class="text-blue-400 hover:underline">Next Month &raquo;</a>
+                        <a href="/?year={html.escape(str(next_year))}&month={html.escape(str(next_month))}" class="text-blue-400 hover:underline">Next Month &raquo;</a>
                     </div>
                     <div class="text-center mt-8 text-gray-400 text-sm">
                         Build:
