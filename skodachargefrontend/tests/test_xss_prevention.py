@@ -243,3 +243,101 @@ class TestXSSPrevention:
         # Should not contain any script tags in navigation
         assert '<script>' not in body.split('Previous Month')[0][-100:] if 'Previous Month' in body else True
         assert '<script>' not in body.split('Next Month')[0][-100:] if 'Next Month' in body else True
+
+    @pytest.mark.asyncio
+    async def test_daily_totals_date_formatting_safe(self):
+        """Test that date formatting in daily totals is safe from XSS."""
+        mod = load_frontend_with_stubs()
+        
+        # Get a reference to db_connect to mock the cursor
+        original_db_connect = mod.db_connect
+        
+        async def mock_db_connect(_logger):
+            """Mock db_connect with data that includes dates."""
+            from datetime import datetime
+            
+            class MockCursor:
+                def execute(self, *args, **kwargs):
+                    pass
+
+                def fetchall(self):
+                    # Return mock data with multiple days to trigger daily totals
+                    return [
+                        (
+                            datetime(2025, 1, 15, 10, 0, 0),  # log_timestamp
+                            datetime(2025, 1, 15, 10, 0, 0),  # start_at
+                            datetime(2025, 1, 15, 11, 0, 0),  # stop_at
+                            25.5,  # amount - larger amount to ensure it's displayed 
+                            15.0,  # price
+                            100.0,  # charged_range
+                            50.0,  # start_range
+                            12345,  # mileage
+                            'home',  # position
+                            80.0,  # soc
+                        ),
+                        (
+                            datetime(2025, 1, 16, 10, 0, 0),  # log_timestamp
+                            datetime(2025, 1, 16, 10, 0, 0),  # start_at
+                            datetime(2025, 1, 16, 11, 0, 0),  # stop_at
+                            20.0,  # amount
+                            12.0,  # price
+                            80.0,  # charged_range
+                            40.0,  # start_range
+                            12400,  # mileage
+                            'home',  # position
+                            75.0,  # soc
+                        )
+                    ]
+
+            class MockConn:
+                auto_reconnect = True
+
+                def cursor(self):
+                    return MockCursor()
+
+            return MockConn(), MockCursor()
+
+        # Temporarily replace db_connect
+        mod.db_connect = mock_db_connect
+        
+        try:
+            resp = await mod.root(year=2025, month=1)
+            body = resp.body.decode("utf-8") if hasattr(resp, "body") else str(resp)
+            
+            # Should contain properly formatted dates
+            assert '2025-01-15' in body
+            assert '2025-01-16' in body
+            
+            # Should not contain any script tags in the date formatting
+            assert '<script>' not in body
+            assert 'javascript:' not in body.lower()
+            assert 'onerror=' not in body.lower()
+            
+        finally:
+            # Restore original db_connect
+            mod.db_connect = original_db_connect
+
+    @pytest.mark.asyncio
+    async def test_url_parameters_safe_in_navigation(self):
+        """Test that URL parameters in navigation links are safe from XSS."""
+        mod = load_frontend_with_stubs()
+        
+        # Test with edge case years to ensure they're handled safely
+        resp = await mod.root(year=2025, month=12)  # Test December for year rollover
+        body = resp.body.decode("utf-8") if hasattr(resp, "body") else str(resp)
+        
+        # Check that navigation URLs are properly formed
+        assert '/?year=2025&month=11' in body  # Previous month
+        assert '/?year=2026&month=1' in body   # Next month (year rollover)
+        
+        # Ensure no XSS in URL parameters
+        assert 'javascript:' not in body.lower()
+        assert '<script>' not in body
+        assert 'onerror=' not in body.lower()
+        
+        # Test January for year rollback
+        resp2 = await mod.root(year=2025, month=1)
+        body2 = resp2.body.decode("utf-8") if hasattr(resp2, "body") else str(resp2)
+        
+        assert '/?year=2024&month=12' in body2  # Previous month (year rollback)
+        assert '/?year=2025&month=2' in body2   # Next month

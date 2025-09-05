@@ -249,7 +249,7 @@ async def root(
         dkk = round(daily[d]["dkk"], 2)
         html += f"""
                             <div class=\"divTableRow\">
-                                <div class=\"divTableCell text-white\">{d.strftime('%Y-%m-%d')}</div>
+                                <div class=\"divTableCell text-white\">{escape_html(d.strftime('%Y-%m-%d'))}</div>
                                 <div class=\"divTableCell text-white\">{kwh:.2f} kWh</div>
                                 <div class=\"divTableCell text-white\">{dkk:.2f} DKK</div>
                             </div>
