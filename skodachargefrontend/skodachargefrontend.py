@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import html
 import json
 import logging
 import os
@@ -33,6 +34,21 @@ async def ordinal(n):
         return f"{n}th"
     else:
         return f"{n}{['th', 'st', 'nd', 'rd', 'th'][min(n % 10, 4)]}"
+
+
+def escape_html(value):
+    """
+    Escape HTML content to prevent XSS attacks.
+    
+    Args:
+        value: The value to escape. Can be string, int, float, or None.
+        
+    Returns:
+        str: HTML-escaped string representation of the value.
+    """
+    if value is None:
+        return ""
+    return html.escape(str(value))
 
 
 app = FastAPI()
@@ -132,7 +148,7 @@ async def root(
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Charge Summary for {year}-{month:02d}</title>
+            <title>Charge Summary for {escape_html(year)}-{month:02d}</title>
             <link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
         </head>
         <body class="bg-black">
@@ -140,7 +156,7 @@ async def root(
                 <div class="container px-5 py-12 mx-auto lg:px-20">
                     <div class="flex flex-col flex-wrap pb-6 mb-12 text-white">
                         <h1 class="mb-12 text-3xl font-medium text-white">
-                            Charge Summary for {year}-{month:02d}
+                            Charge Summary for {escape_html(year)}-{month:02d}
                         </h1>
                         <p class="text-white text-xl">No charge data found for this month.</p>
                     </div>
@@ -153,9 +169,9 @@ async def root(
                     </div>
                     <div class="text-center mt-8 text-gray-400 text-sm">
                         Build:
-                        {git_tag or 'untagged'}
-                        {f'<a class="underline" href="https://github.com/tn8or/skoda/commit/{git_commit}" target="_blank" rel="noopener noreferrer">{short_commit}</a>' if git_commit else ''}
-                        {f'({build_date_local})' if build_date_local else ''}
+                        {escape_html(git_tag) or 'untagged'}
+                        {f'<a class="underline" href="https://github.com/tn8or/skoda/commit/{escape_html(git_commit)}" target="_blank" rel="noopener noreferrer">{escape_html(short_commit)}</a>' if git_commit else ''}
+                        {f'({escape_html(build_date_local)})' if build_date_local else ''}
                     </div>
                 </div>
             </section>
@@ -171,7 +187,7 @@ async def root(
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Charge Summary for {year}-{month:02d}</title>
+        <title>Charge Summary for {escape_html(year)}-{month:02d}</title>
         <link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
         <style>
             .divTable {{
@@ -210,7 +226,7 @@ async def root(
             <div class="container px-5 py-12 mx-auto lg:px-20">
                 <div class="flex flex-col flex-wrap text-white">
                     <h1 class="mb-12 text-3xl font-medium text-white">
-                        Charge Summary for {year}-{month:02d}
+                        Charge Summary for {escape_html(year)}-{month:02d}
                     </h1>
                 </div>
                 <!-- Daily totals table -->
@@ -320,15 +336,15 @@ async def root(
 
         html += f"""
                         <div class=\"divTableRow\">
-                            <div class=\"divTableCell text-white\">{stopped_at_str}</div>
-                            <div class=\"divTableCell text-white\">{mileage}</div>
+                            <div class=\"divTableCell text-white\">{escape_html(stopped_at_str)}</div>
+                            <div class=\"divTableCell text-white\">{escape_html(mileage)}</div>
                             <div class=\"divTableCell text-white\">{amount:.2f} kWh</div>
                             <div class=\"divTableCell text-white\">{price:.2f} DKK</div>
                             <div class=\"divTableCell text-white\">{int(charged_range / soc * 100) if charged_range and soc else 0} KM</div>
                             <div class=\"divTableCell text-white\">{range_diff if range_diff > 0 else 0} KM</div>
                             <div class=\"divTableCell text-white\">{range_per_kwh}</div>
                             <div class=\"divTableCell text-white\">{int(soc) if soc is not None else 0}%</div>
-                            <div class=\"divTableCell text-white\">{position}</div>
+                            <div class=\"divTableCell text-white\">{escape_html(position)}</div>
                         </div>
         """
     # Compute month-wide mileage change across sessions for footer
@@ -362,9 +378,9 @@ async def root(
                 </div>
                 <div class=\"text-center mt-4 text-gray-400 text-sm\">
                     Build:
-                    {git_tag or 'untagged'}
-                    {f'<a class=\"underline\" href=\"https://github.com/tn8or/skoda/commit/{git_commit}\" target=\"_blank\" rel=\"noopener noreferrer\">{short_commit}</a>' if git_commit else ''}
-                    {f'({build_date_local})' if build_date_local else ''}
+                    {escape_html(git_tag) or 'untagged'}
+                    {f'<a class=\"underline\" href=\"https://github.com/tn8or/skoda/commit/{escape_html(git_commit)}\" target=\"_blank\" rel=\"noopener noreferrer\">{escape_html(short_commit)}</a>' if git_commit else ''}
+                    {f'({escape_html(build_date_local)})' if build_date_local else ''}
                     - <a class=\"underline\" href=\"https://github.com/tn8or/skoda/\" target=\"_blank\" rel=\"noopener noreferrer\">github.com/tn8or/skoda</a>
                 </div>
             </div>
