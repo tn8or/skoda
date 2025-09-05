@@ -161,11 +161,11 @@ async def root(
                         <p class="text-white text-xl">No charge data found for this month.</p>
                     </div>
                     <div class="text-center mt-8">
-                        <a href="/?year={prev_year}&month={prev_month}" class="text-blue-400 hover:underline">« Previous Month</a>
+                        <a href="/?year={escape_html(prev_year)}&month={escape_html(prev_month)}" class="text-blue-400 hover:underline">« Previous Month</a>
                         <span class="mx-2 text-white">|</span>
                         <a href="/" class="text-blue-400 hover:underline">Home</a>
                         <span class="mx-2 text-white">|</span>
-                        <a href="/?year={next_year}&month={next_month}" class="text-blue-400 hover:underline">Next Month »</a>
+                        <a href="/?year={escape_html(next_year)}&month={escape_html(next_month)}" class="text-blue-400 hover:underline">Next Month »</a>
                     </div>
                     <div class="text-center mt-8 text-gray-400 text-sm">
                         Build:
@@ -370,11 +370,11 @@ async def root(
                     </div>
                 </div>
                 <div class=\"text-center mt-8\">
-                    <a href=\"/?year={prev_year}&month={prev_month}\" class=\"text-blue-400 hover:underline\">« Previous Month</a>
+                    <a href=\"/?year={escape_html(prev_year)}&month={escape_html(prev_month)}\" class=\"text-blue-400 hover:underline\">« Previous Month</a>
                     <span class=\"mx-2 text-white\">|</span>
                     <a href=\"/\" class=\"text-blue-400 hover:underline\">Home</a>
                     <span class=\"mx-2 text-white\">|</span>
-                    <a href=\"/?year={next_year}&month={next_month}\" class=\"text-blue-400 hover:underline\">Next Month »</a>
+                    <a href=\"/?year={escape_html(next_year)}&month={escape_html(next_month)}\" class=\"text-blue-400 hover:underline\">Next Month »</a>
                 </div>
                 <div class=\"text-center mt-4 text-gray-400 text-sm\">
                     Build:
