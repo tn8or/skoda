@@ -5,7 +5,7 @@ import logging
 import os
 import time
 from zoneinfo import ZoneInfo
-
+import html
 from fastapi import BackgroundTasks, FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, JSONResponse
 from helpers import (
@@ -127,6 +127,13 @@ async def root(
     if next_month > 12:
         next_month = 1
         next_year += 1
+    # Escape all query-derived values before interpolating into HTML
+    escaped_year = html.escape(str(year))
+    escaped_month = html.escape(str(month))
+    escaped_prev_year = html.escape(str(prev_year))
+    escaped_prev_month = html.escape(str(prev_month))
+    escaped_next_year = html.escape(str(next_year))
+    escaped_next_month = html.escape(str(next_month))
     if not sessions:
         html = f"""
         <!DOCTYPE html>
@@ -354,11 +361,11 @@ async def root(
                     </div>
                 </div>
                 <div class=\"text-center mt-8\">
-                    <a href=\"/?year={prev_year}&month={prev_month}\" class=\"text-blue-400 hover:underline\">« Previous Month</a>
+                    <a href=\"/?year={escaped_prev_year}&month={escaped_prev_month}\" class=\"text-blue-400 hover:underline\">« Previous Month</a>
                     <span class=\"mx-2 text-white\">|</span>
                     <a href=\"/\" class=\"text-blue-400 hover:underline\">Home</a>
                     <span class=\"mx-2 text-white\">|</span>
-                    <a href=\"/?year={next_year}&month={next_month}\" class=\"text-blue-400 hover:underline\">Next Month »</a>
+                    <a href=\"/?year={escaped_next_year}&month={escaped_next_month}\" class=\"text-blue-400 hover:underline\">Next Month »</a>
                 </div>
                 <div class=\"text-center mt-4 text-gray-400 text-sm\">
                     Build:
