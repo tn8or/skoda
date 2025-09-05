@@ -7,7 +7,7 @@ import time
 from zoneinfo import ZoneInfo
 
 from fastapi import BackgroundTasks, FastAPI, Query, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, JSONResponse
 from helpers import (
     compute_daily_totals_home,
     compute_session_summary,
@@ -145,11 +145,11 @@ async def root(
                         <p class="text-white text-xl">No charge data found for this month.</p>
                     </div>
                     <div class="text-center mt-8">
-                        <a href="/?year={prev_year}&month={prev_month}" class="text-blue-400 hover:underline">&laquo; Previous Month</a>
+                        <a href="/?year={prev_year}&month={prev_month}" class="text-blue-400 hover:underline">« Previous Month</a>
                         <span class="mx-2 text-white">|</span>
                         <a href="/" class="text-blue-400 hover:underline">Home</a>
                         <span class="mx-2 text-white">|</span>
-                        <a href="/?year={next_year}&month={next_month}" class="text-blue-400 hover:underline">Next Month &raquo;</a>
+                        <a href="/?year={next_year}&month={next_month}" class="text-blue-400 hover:underline">Next Month »</a>
                     </div>
                     <div class="text-center mt-8 text-gray-400 text-sm">
                         Build:
@@ -319,16 +319,16 @@ async def root(
         displayed_count += 1
 
         html += f"""
-                        <div class=\"divTableRow\">\n
-                            <div class=\"divTableCell text-white\">{stopped_at_str}</div>\n
-                            <div class=\"divTableCell text-white\">{mileage}</div>\n
-                            <div class=\"divTableCell text-white\">{amount:.2f} kWh</div>\n
-                            <div class=\"divTableCell text-white\">{price:.2f} DKK</div>\n
-                            <div class=\"divTableCell text-white\">{int(charged_range / soc * 100) if charged_range and soc else 0} KM</div>\n
-                            <div class=\"divTableCell text-white\">{range_diff if range_diff > 0 else 0} KM</div>\n
-                            <div class=\"divTableCell text-white\">{range_per_kwh}</div>\n
-                            <div class=\"divTableCell text-white\">{int(soc) if soc is not None else 0}%</div>\n
-                            <div class=\"divTableCell text-white\">{position}</div>\n
+                        <div class=\"divTableRow\">
+                            <div class=\"divTableCell text-white\">{stopped_at_str}</div>
+                            <div class=\"divTableCell text-white\">{mileage}</div>
+                            <div class=\"divTableCell text-white\">{amount:.2f} kWh</div>
+                            <div class=\"divTableCell text-white\">{price:.2f} DKK</div>
+                            <div class=\"divTableCell text-white\">{int(charged_range / soc * 100) if charged_range and soc else 0} KM</div>
+                            <div class=\"divTableCell text-white\">{range_diff if range_diff > 0 else 0} KM</div>
+                            <div class=\"divTableCell text-white\">{range_per_kwh}</div>
+                            <div class=\"divTableCell text-white\">{int(soc) if soc is not None else 0}%</div>
+                            <div class=\"divTableCell text-white\">{position}</div>
                         </div>
         """
     # Compute month-wide mileage change across sessions for footer
@@ -338,34 +338,34 @@ async def root(
     avg_range_per_kwh = round(totalmileage / total_amount, 2) if total_amount > 0 else 0
     html += f"""
                     </div>
-            <div class="divTableFoot">
-                        <div class="divTableRow font-bold">
-                <div class="divTableCell">{displayed_count} charges</div>
-                            <div class="divTableCell">{totalmileage} KM</div>
-                            <div class="divTableCell">{total_amount:.2f} kWh</div>
-                            <div class="divTableCell">{total_price:.2f} DKK</div>
-                            <div class="divTableCell"></div>
-                            <div class="divTableCell"></div>
-                            <div class="divTableCell">Estimated: {round(total_range_per_kwh / range_count, 2) if total_range_per_kwh > 0 and range_count > 0 else 0}
+            <div class=\"divTableFoot\">
+                        <div class=\"divTableRow font-bold\">
+                <div class=\"divTableCell\">{displayed_count} charges</div>
+                            <div class=\"divTableCell\">{totalmileage} KM</div>
+                            <div class=\"divTableCell\">{total_amount:.2f} kWh</div>
+                            <div class=\"divTableCell\">{total_price:.2f} DKK</div>
+                            <div class=\"divTableCell\"></div>
+                            <div class=\"divTableCell\"></div>
+                            <div class=\"divTableCell\">Estimated: {round(total_range_per_kwh / range_count, 2) if total_range_per_kwh > 0 and range_count > 0 else 0}
                             <br />Actual: {avg_range_per_kwh if total_range_per_kwh > 0 and range_count > 0 else 0}</div>
-                            <div class="divTableCell"></div>
-                            <div class="divTableCell"></div>
+                            <div class=\"divTableCell\"></div>
+                            <div class=\"divTableCell\"></div>
                         </div>
                     </div>
                 </div>
-                <div class="text-center mt-8">
-                    <a href="/?year={prev_year}&month={prev_month}" class="text-blue-400 hover:underline">&laquo; Previous Month</a>
-                    <span class="mx-2 text-white">|</span>
-                    <a href="/" class="text-blue-400 hover:underline">Home</a>
-                    <span class="mx-2 text-white">|</span>
-                    <a href="/?year={next_year}&month={next_month}" class="text-blue-400 hover:underline">Next Month &raquo;</a>
+                <div class=\"text-center mt-8\">
+                    <a href=\"/?year={prev_year}&month={prev_month}\" class=\"text-blue-400 hover:underline\">« Previous Month</a>
+                    <span class=\"mx-2 text-white\">|</span>
+                    <a href=\"/\" class=\"text-blue-400 hover:underline\">Home</a>
+                    <span class=\"mx-2 text-white\">|</span>
+                    <a href=\"/?year={next_year}&month={next_month}\" class=\"text-blue-400 hover:underline\">Next Month »</a>
                 </div>
-                <div class="text-center mt-4 text-gray-400 text-sm">
+                <div class=\"text-center mt-4 text-gray-400 text-sm\">
                     Build:
                     {git_tag or 'untagged'}
-                    {f'<a class="underline" href="https://github.com/tn8or/skoda/commit/{git_commit}" target="_blank" rel="noopener noreferrer">{short_commit}</a>' if git_commit else ''}
+                    {f'<a class=\"underline\" href=\"https://github.com/tn8or/skoda/commit/{git_commit}\" target=\"_blank\" rel=\"noopener noreferrer\">{short_commit}</a>' if git_commit else ''}
                     {f'({build_date_local})' if build_date_local else ''}
-                    - <a class="underline" href="https://github.com/tn8or/skoda/" target="_blank" rel="noopener noreferrer">github.com/tn8or/skoda</a>
+                    - <a class=\"underline\" href=\"https://github.com/tn8or/skoda/\" target=\"_blank\" rel=\"noopener noreferrer\">github.com/tn8or/skoda</a>
                 </div>
             </div>
         </section>
@@ -373,3 +373,83 @@ async def root(
     </html>
     """
     return HTMLResponse(content=html)
+
+
+@app.get("/health/rawlogs/age")
+async def latest_rawlog_age(threshold_seconds: int | None = Query(default=None, ge=0)):
+    """
+    Report the age of the latest imported event in skoda.rawlogs.
+
+    Query params:
+      - threshold_seconds: optional non-negative integer. If provided and the
+        latest event age exceeds this threshold, respond with HTTP 503.
+
+    Responses:
+      200 JSON: { "latest_timestamp": "...", "age_seconds": 123, "threshold_seconds": 60, "within_threshold": true }
+      404 JSON: when no rawlogs are present yet
+      500 JSON: on database error or timestamp parse error
+      503 JSON: when threshold_seconds is provided and age exceeds the threshold
+    """
+    conn, cur = await db_connect(my_logger)
+    try:
+        cur.execute("SELECT MAX(log_timestamp) FROM skoda.rawlogs")
+        row = cur.fetchone()
+    except Exception as e:
+        my_logger.error("Error fetching latest rawlog timestamp: %s", e)
+        return JSONResponse(
+            status_code=500, content={"error": "database error fetching rawlogs"}
+        )
+
+    latest = row[0] if row else None
+    if latest is None:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "latest_timestamp": None,
+                "age_seconds": None,
+                "threshold_seconds": threshold_seconds,
+                "within_threshold": None,
+                "message": "no rawlogs found",
+            },
+        )
+
+    # Coerce to aware UTC datetime
+    try:
+        if isinstance(latest, datetime.datetime):
+            ts = latest
+        else:
+            ts = datetime.datetime.fromisoformat(str(latest))
+    except Exception:
+        # Fallback: stringify
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "could not parse latest rawlog timestamp",
+                "raw": str(latest),
+            },
+        )
+
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=datetime.timezone.utc)
+
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    age_seconds = max(0, int((now_utc - ts).total_seconds()))
+
+    # Threshold handling
+    if threshold_seconds is not None and age_seconds > threshold_seconds:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "latest_timestamp": ts.isoformat(),
+                "age_seconds": age_seconds,
+                "threshold_seconds": threshold_seconds,
+                "within_threshold": False,
+            },
+        )
+
+    return {
+        "latest_timestamp": ts.isoformat(),
+        "age_seconds": age_seconds,
+        "threshold_seconds": threshold_seconds,
+        "within_threshold": None if threshold_seconds is None else age_seconds <= threshold_seconds,
+    }
