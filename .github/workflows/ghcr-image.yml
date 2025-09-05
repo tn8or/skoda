@@ -30,7 +30,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          # Security: Always checkout main branch, not potentially untrusted PR code
+          # This ensures we build from trusted source even in workflow_run context
+          ref: main
           fetch-depth: 0
           fetch-tags: true
 
