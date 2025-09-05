@@ -145,11 +145,11 @@ async def root(
                         <p class="text-white text-xl">No charge data found for this month.</p>
                     </div>
                     <div class="text-center mt-8">
-                        <a href="/?year={prev_year}&month={prev_month}" class="text-blue-400 hover:underline">&laquo; Previous Month</a>
+                        <a href="/?year={prev_year}&month={prev_month}" class="text-blue-400 hover:underline">« Previous Month</a>
                         <span class="mx-2 text-white">|</span>
                         <a href="/" class="text-blue-400 hover:underline">Home</a>
                         <span class="mx-2 text-white">|</span>
-                        <a href="/?year={next_year}&month={next_month}" class="text-blue-400 hover:underline">Next Month &raquo;</a>
+                        <a href="/?year={next_year}&month={next_month}" class="text-blue-400 hover:underline">Next Month »</a>
                     </div>
                     <div class="text-center mt-8 text-gray-400 text-sm">
                         Build:
@@ -238,7 +238,7 @@ async def root(
                                 <div class=\"divTableCell text-white\">{dkk:.2f} DKK</div>
                             </div>
         """
-    html += ""
+    html += """
                         </div>
                     </div>
                 </div>
@@ -338,34 +338,34 @@ async def root(
     avg_range_per_kwh = round(totalmileage / total_amount, 2) if total_amount > 0 else 0
     html += f"""
                     </div>
-            <div class="divTableFoot">
-                        <div class="divTableRow font-bold">
-                <div class="divTableCell">{displayed_count} charges</div>
-                            <div class="divTableCell">{totalmileage} KM</div>
-                            <div class="divTableCell">{total_amount:.2f} kWh</div>
-                            <div class="divTableCell">{total_price:.2f} DKK</div>
-                            <div class="divTableCell"></div>
-                            <div class="divTableCell"></div>
-                            <div class="divTableCell">Estimated: {round(total_range_per_kwh / range_count, 2) if total_range_per_kwh > 0 and range_count > 0 else 0}
+            <div class=\"divTableFoot\">
+                        <div class=\"divTableRow font-bold\">
+                <div class=\"divTableCell\">{displayed_count} charges</div>
+                            <div class=\"divTableCell\">{totalmileage} KM</div>
+                            <div class=\"divTableCell\">{total_amount:.2f} kWh</div>
+                            <div class=\"divTableCell\">{total_price:.2f} DKK</div>
+                            <div class=\"divTableCell\"></div>
+                            <div class=\"divTableCell\"></div>
+                            <div class=\"divTableCell\">Estimated: {round(total_range_per_kwh / range_count, 2) if total_range_per_kwh > 0 and range_count > 0 else 0}
                             <br />Actual: {avg_range_per_kwh if total_range_per_kwh > 0 and range_count > 0 else 0}</div>
-                            <div class="divTableCell"></div>
-                            <div class="divTableCell"></div>
+                            <div class=\"divTableCell\"></div>
+                            <div class=\"divTableCell\"></div>
                         </div>
                     </div>
                 </div>
-                <div class="text-center mt-8">
-                    <a href="/?year={prev_year}&month={prev_month}" class="text-blue-400 hover:underline">&laquo; Previous Month</a>
-                    <span class="mx-2 text-white">|</span>
-                    <a href="/" class="text-blue-400 hover:underline">Home</a>
-                    <span class="mx-2 text-white">|</span>
-                    <a href="/?year={next_year}&month={next_month}" class="text-blue-400 hover:underline">Next Month &raquo;</a>
+                <div class=\"text-center mt-8\">
+                    <a href=\"/?year={prev_year}&month={prev_month}\" class=\"text-blue-400 hover:underline\">« Previous Month</a>
+                    <span class=\"mx-2 text-white\">|</span>
+                    <a href=\"/\" class=\"text-blue-400 hover:underline\">Home</a>
+                    <span class=\"mx-2 text-white\">|</span>
+                    <a href=\"/?year={next_year}&month={next_month}\" class=\"text-blue-400 hover:underline\">Next Month »</a>
                 </div>
-                <div class="text-center mt-4 text-gray-400 text-sm">
+                <div class=\"text-center mt-4 text-gray-400 text-sm\">
                     Build:
                     {git_tag or 'untagged'}
-                    {f'<a class="underline" href="https://github.com/tn8or/skoda/commit/{git_commit}" target="_blank" rel="noopener noreferrer">{short_commit}</a>' if git_commit else ''}
+                    {f'<a class=\"underline\" href=\"https://github.com/tn8or/skoda/commit/{git_commit}\" target=\"_blank\" rel=\"noopener noreferrer\">{short_commit}</a>' if git_commit else ''}
                     {f'({build_date_local})' if build_date_local else ''}
-                    - <a class="underline" href="https://github.com/tn8or/skoda/" target="_blank" rel="noopener noreferrer">github.com/tn8or/skoda</a>
+                    - <a class=\"underline\" href=\"https://github.com/tn8or/skoda/\" target=\"_blank\" rel=\"noopener noreferrer\">github.com/tn8or/skoda</a>
                 </div>
             </div>
         </section>
