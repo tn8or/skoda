@@ -7,6 +7,7 @@ import time
 from zoneinfo import ZoneInfo
 
 from fastapi import BackgroundTasks, FastAPI, Query, Request
+import html
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from helpers import (
     compute_daily_totals_home,
@@ -354,11 +355,11 @@ async def root(
                     </div>
                 </div>
                 <div class="text-center mt-8">
-                    <a href="/?year={prev_year}&month={prev_month}" class="text-blue-400 hover:underline">&laquo; Previous Month</a>
+                    <a href="/?year={html.escape(str(prev_year))}&month={html.escape(str(prev_month))}" class="text-blue-400 hover:underline">&laquo; Previous Month</a>
                     <span class="mx-2 text-white">|</span>
                     <a href="/" class="text-blue-400 hover:underline">Home</a>
                     <span class="mx-2 text-white">|</span>
-                    <a href="/?year={next_year}&month={next_month}" class="text-blue-400 hover:underline">Next Month &raquo;</a>
+                    <a href="/?year={html.escape(str(next_year))}&month={html.escape(str(next_month))}" class="text-blue-400 hover:underline">Next Month &raquo;</a>
                 </div>
                 <div class="text-center mt-4 text-gray-400 text-sm">
                     Build:
