@@ -7,7 +7,7 @@ import time
 from zoneinfo import ZoneInfo
 
 from fastapi import BackgroundTasks, FastAPI, Query, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, JSONResponse
 from helpers import (
     compute_daily_totals_home,
     compute_session_summary,
@@ -238,7 +238,7 @@ async def root(
                                 <div class=\"divTableCell text-white\">{dkk:.2f} DKK</div>
                             </div>
         """
-    html += """
+    html += ""
                         </div>
                     </div>
                 </div>
@@ -319,16 +319,16 @@ async def root(
         displayed_count += 1
 
         html += f"""
-                        <div class=\"divTableRow\">\n
-                            <div class=\"divTableCell text-white\">{stopped_at_str}</div>\n
-                            <div class=\"divTableCell text-white\">{mileage}</div>\n
-                            <div class=\"divTableCell text-white\">{amount:.2f} kWh</div>\n
-                            <div class=\"divTableCell text-white\">{price:.2f} DKK</div>\n
-                            <div class=\"divTableCell text-white\">{int(charged_range / soc * 100) if charged_range and soc else 0} KM</div>\n
-                            <div class=\"divTableCell text-white\">{range_diff if range_diff > 0 else 0} KM</div>\n
-                            <div class=\"divTableCell text-white\">{range_per_kwh}</div>\n
-                            <div class=\"divTableCell text-white\">{int(soc) if soc is not None else 0}%</div>\n
-                            <div class=\"divTableCell text-white\">{position}</div>\n
+                        <div class=\"divTableRow\">
+                            <div class=\"divTableCell text-white\">{stopped_at_str}</div>
+                            <div class=\"divTableCell text-white\">{mileage}</div>
+                            <div class=\"divTableCell text-white\">{amount:.2f} kWh</div>
+                            <div class=\"divTableCell text-white\">{price:.2f} DKK</div>
+                            <div class=\"divTableCell text-white\">{int(charged_range / soc * 100) if charged_range and soc else 0} KM</div>
+                            <div class=\"divTableCell text-white\">{range_diff if range_diff > 0 else 0} KM</div>
+                            <div class=\"divTableCell text-white\">{range_per_kwh}</div>
+                            <div class=\"divTableCell text-white\">{int(soc) if soc is not None else 0}%</div>
+                            <div class=\"divTableCell text-white\">{position}</div>
                         </div>
         """
     # Compute month-wide mileage change across sessions for footer
@@ -373,3 +373,83 @@ async def root(
     </html>
     """
     return HTMLResponse(content=html)
+
+
+@app.get("/health/rawlogs/age")
+async def latest_rawlog_age(threshold_seconds: int | None = Query(default=None, ge=0)):
+    """
+    Report the age of the latest imported event in skoda.rawlogs.
+
+    Query params:
+      - threshold_seconds: optional non-negative integer. If provided and the
+        latest event age exceeds this threshold, respond with HTTP 503.
+
+    Responses:
+      200 JSON: { "latest_timestamp": "...", "age_seconds": 123, "threshold_seconds": 60, "within_threshold": true }
+      404 JSON: when no rawlogs are present yet
+      500 JSON: on database error or timestamp parse error
+      503 JSON: when threshold_seconds is provided and age exceeds the threshold
+    """
+    conn, cur = await db_connect(my_logger)
+    try:
+        cur.execute("SELECT MAX(log_timestamp) FROM skoda.rawlogs")
+        row = cur.fetchone()
+    except Exception as e:
+        my_logger.error("Error fetching latest rawlog timestamp: %s", e)
+        return JSONResponse(
+            status_code=500, content={"error": "database error fetching rawlogs"}
+        )
+
+    latest = row[0] if row else None
+    if latest is None:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "latest_timestamp": None,
+                "age_seconds": None,
+                "threshold_seconds": threshold_seconds,
+                "within_threshold": None,
+                "message": "no rawlogs found",
+            },
+        )
+
+    # Coerce to aware UTC datetime
+    try:
+        if isinstance(latest, datetime.datetime):
+            ts = latest
+        else:
+            ts = datetime.datetime.fromisoformat(str(latest))
+    except Exception:
+        # Fallback: stringify
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "could not parse latest rawlog timestamp",
+                "raw": str(latest),
+            },
+        )
+
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=datetime.timezone.utc)
+
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    age_seconds = max(0, int((now_utc - ts).total_seconds()))
+
+    # Threshold handling
+    if threshold_seconds is not None and age_seconds > threshold_seconds:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "latest_timestamp": ts.isoformat(),
+                "age_seconds": age_seconds,
+                "threshold_seconds": threshold_seconds,
+                "within_threshold": False,
+            },
+        )
+
+    return {
+        "latest_timestamp": ts.isoformat(),
+        "age_seconds": age_seconds,
+        "threshold_seconds": threshold_seconds,
+        "within_threshold": None if threshold_seconds is None else age_seconds <= threshold_seconds,
+    }
