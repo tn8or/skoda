@@ -208,3 +208,29 @@ class TestHealthRawlogsAge:
         assert hasattr(response, "keys")  # It's a dict
         assert response["within_threshold"] is True
         assert response["threshold_seconds"] == 60
+
+
+class TestHealthEndpointHTTPMethods:
+    """Test cases for HTTP method support on the health endpoint."""
+
+    def test_endpoint_supports_get_and_head_methods(self):
+        """Test that the health endpoint is configured to support both GET and HEAD methods."""
+        import re
+        
+        # Read the source file to verify the route definition
+        here = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        frontend_file = os.path.join(here, "skodachargefrontend.py")
+        
+        with open(frontend_file, 'r') as f:
+            content = f.read()
+        
+        # Verify the health endpoint supports both GET and HEAD methods
+        health_route_pattern = r'@app\.api_route\([^)]*"/health/rawlogs/age"[^)]*methods=\[.*"GET".*"HEAD".*\][^)]*\)'
+        match = re.search(health_route_pattern, content)
+        
+        assert match is not None, "Health endpoint should be configured with @app.api_route supporting GET and HEAD"
+        
+        # Verify both methods are present
+        route_def = match.group(0)
+        assert '"GET"' in route_def, "Health endpoint should support GET method"
+        assert '"HEAD"' in route_def, "Health endpoint should support HEAD method for UptimeRobot compatibility"

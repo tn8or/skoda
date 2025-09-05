@@ -375,7 +375,7 @@ async def root(
     return HTMLResponse(content=html)
 
 
-@app.get("/health/rawlogs/age")
+@app.api_route("/health/rawlogs/age", methods=["GET", "HEAD"])
 async def latest_rawlog_age(threshold_seconds: int | None = Query(default=None, ge=0)):
     """
     Report the age of the latest imported event in skoda.rawlogs.
