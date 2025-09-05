@@ -444,6 +444,7 @@ async def latest_rawlog_age(threshold_seconds: int | None = Query(default=None, 
                 "age_seconds": age_seconds,
                 "threshold_seconds": threshold_seconds,
                 "within_threshold": False,
+                "message": "out of bounds",
             },
         )
 
