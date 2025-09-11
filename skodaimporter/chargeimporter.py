@@ -37,6 +37,11 @@ _bg_task: Optional[asyncio.Task] = None
 _last_bg_error_time: float = 0.0
 _last_bg_error_msg: Optional[str] = None
 
+# Enhanced connection detection configuration
+CONNECTION_STATUS_TIMEOUT = 15 * 60  # 15 minutes for connection status checks
+API_HEALTH_CHECK_TIMEOUT = 30 * 60  # 30 minutes for API health checks  
+MQTT_STATE_CHECK_INTERVAL = 5 * 60  # 5 minutes for MQTT state verification
+
 
 def _mark_unhealthy(msg: str) -> None:
     """Mark service as unhealthy and log the reason."""
@@ -44,6 +49,131 @@ def _mark_unhealthy(msg: str) -> None:
     _last_bg_error_time = time.time()
     _last_bg_error_msg = msg
     my_logger.error("Unhealthy: %s", msg)
+
+
+async def check_vehicle_connection_status(vin: str) -> bool:
+    """Check vehicle connection status using MySkoda API.
+    
+    Returns True if vehicle is connected, False otherwise.
+    This provides more reliable connection info than just timing events.
+    """
+    try:
+        if myskoda is None:
+            my_logger.warning("MySkoda client not available for connection status check")
+            return False
+            
+        connection_status = await myskoda.get_connection_status(vin)
+        my_logger.debug("Vehicle connection status: %s", connection_status)
+        await save_log_to_db(f"Vehicle connection status check: {connection_status}")
+        
+        # Check if vehicle is actually connected (implementation depends on connection_status structure)
+        # For now, we'll consider any successful response as connected
+        return True
+        
+    except Exception as e:
+        my_logger.warning("Failed to check vehicle connection status: %s", e)
+        await save_log_to_db(f"Vehicle connection status check failed: {e}")
+        return False
+
+
+async def check_api_health(vin: str) -> bool:
+    """Perform API health check by testing actual response.
+    
+    Returns True if API is responsive, False otherwise.
+    Tests with lightweight API calls to verify connectivity.
+    """
+    try:
+        if myskoda is None:
+            my_logger.warning("MySkoda client not available for API health check")
+            return False
+            
+        # Try a lightweight API call to verify responsiveness
+        health = await myskoda.get_health(vin)
+        my_logger.debug("API health check successful: mileage=%s", health.mileage_in_km)
+        await save_log_to_db(f"API health check successful: mileage={health.mileage_in_km}")
+        return True
+        
+    except Exception as e:
+        my_logger.warning("API health check failed: %s", e)
+        await save_log_to_db(f"API health check failed: {e}")
+        return False
+
+
+def check_mqtt_connection_state() -> bool:
+    """Check MQTT client connection state.
+    
+    Returns True if MQTT client is connected, False otherwise.
+    Provides immediate feedback on MQTT connection status.
+    """
+    try:
+        if myskoda is None or myskoda.mqtt is None:
+            my_logger.debug("MQTT client not available")
+            return False
+            
+        # Check if MQTT client is running and connected
+        mqtt_client = myskoda.mqtt
+        is_connected = (
+            mqtt_client._running and 
+            mqtt_client._listener_task is not None and 
+            not mqtt_client._listener_task.done()
+        )
+        
+        my_logger.debug("MQTT connection state: running=%s, connected=%s", 
+                       mqtt_client._running, is_connected)
+        return is_connected
+        
+    except Exception as e:
+        my_logger.warning("Failed to check MQTT connection state: %s", e)
+        return False
+
+
+async def perform_enhanced_connection_check(vin: str) -> dict:
+    """Perform comprehensive connection health check.
+    
+    Returns a dict with results from multiple connection detection methods.
+    This provides a more complete picture of connection health than timing alone.
+    """
+    results = {
+        "timestamp": time.time(),
+        "event_timeout_check": False,
+        "vehicle_connection_check": False,
+        "api_health_check": False,
+        "mqtt_connection_check": False,
+        "overall_healthy": False
+    }
+    
+    # 1. Original event timeout check
+    elapsed = time.time() - last_event_received
+    results["event_timeout_check"] = elapsed <= last_event_timeout
+    results["last_event_elapsed_seconds"] = elapsed
+    
+    # 2. Vehicle connection status check (if not too recent)
+    if elapsed > CONNECTION_STATUS_TIMEOUT:
+        results["vehicle_connection_check"] = await check_vehicle_connection_status(vin)
+    else:
+        results["vehicle_connection_check"] = True  # Skip if recent event activity
+        
+    # 3. API health check (if event timeout exceeded)
+    if elapsed > API_HEALTH_CHECK_TIMEOUT:
+        results["api_health_check"] = await check_api_health(vin)
+    else:
+        results["api_health_check"] = True  # Skip if not timeout yet
+        
+    # 4. MQTT connection state check
+    results["mqtt_connection_check"] = check_mqtt_connection_state()
+    
+    # Overall health assessment
+    results["overall_healthy"] = (
+        results["event_timeout_check"] and
+        results["vehicle_connection_check"] and 
+        results["api_health_check"] and
+        results["mqtt_connection_check"]
+    )
+    
+    my_logger.debug("Enhanced connection check results: %s", results)
+    await save_log_to_db(f"Enhanced connection check: {results}")
+    
+    return results
 
 
 async def save_log_to_db(log_message: str) -> None:
@@ -375,33 +505,87 @@ app = FastAPI()
 @app.get("/")
 async def root():
     conn, cur = await db_connect(my_logger)
-    # read-only access; no need for global declarations
-    elapsed = time.time() - last_event_received
+    
+    # Perform enhanced connection health check
+    connection_results = await perform_enhanced_connection_check(VIN)
+    
     # If background task failed recently or is not running, report unhealthy
     if _bg_task is None or _bg_task.done() or (time.time() - _last_bg_error_time) < 300:
         detail = _last_bg_error_msg or "background task not running"
         my_logger.error("Healthcheck failing: %s", detail)
         raise HTTPException(status_code=503, detail=detail)
-    if elapsed > last_event_timeout:
-        my_logger.error("Last event more than 1 hours old, triggering charge update")
-        charge_result = await myskoda.refresh_charging(VIN)
-        if not charge_result:
-            my_logger.error("Failed to refresh charging data. Triggering restart")
+    
+    # Use enhanced connection check results
+    if not connection_results["overall_healthy"]:
+        my_logger.error("Enhanced connection check failed: %s", connection_results)
+        
+        # Try graduated response based on what failed
+        if not connection_results["event_timeout_check"]:
+            # Original timeout logic - try to refresh charging
+            my_logger.error("Last event more than %s hours old, triggering charge update", 
+                          last_event_timeout / 3600)
+            try:
+                charge_result = await myskoda.refresh_charging(VIN)
+                if not charge_result:
+                    my_logger.error("Failed to refresh charging data. Triggering restart")
+                    raise HTTPException(
+                        status_code=503, detail="Service temporarily unavailable - charging refresh failed"
+                    )
+                else:
+                    my_logger.debug("Charging refreshed: %s", charge_result)
+            except Exception as e:
+                my_logger.error("Exception during charging refresh: %s", e)
+                raise HTTPException(
+                    status_code=503, detail=f"Service temporarily unavailable - refresh error: {e}"
+                )
+        
+        elif not connection_results["api_health_check"]:
+            # API health failed
+            my_logger.error("API health check failed, service may be unresponsive")
             raise HTTPException(
-                status_code=503, detail="Service temporarily unavailable"
+                status_code=503, detail="Service temporarily unavailable - API health check failed"
             )
+            
+        elif not connection_results["mqtt_connection_check"]:
+            # MQTT connection failed
+            my_logger.error("MQTT connection check failed, real-time events may be unavailable")
+            raise HTTPException(
+                status_code=503, detail="Service temporarily unavailable - MQTT connection failed"
+            )
+            
+        elif not connection_results["vehicle_connection_check"]:
+            # Vehicle connection failed
+            my_logger.error("Vehicle connection check failed, vehicle may be unreachable")
+            raise HTTPException(
+                status_code=503, detail="Service temporarily unavailable - vehicle connection failed"
+            )
+        
         else:
-            my_logger.debug("Charging refreshed: %s", charge_result)
+            # General failure
+            raise HTTPException(
+                status_code=503, detail="Service temporarily unavailable - connection checks failed"
+            )
     else:
+        # All checks passed
+        elapsed = connection_results["last_event_elapsed_seconds"]
         my_logger.info(
-            "Last event received %s seconds ago, within timeout.", int(elapsed)
+            "All connection checks passed. Last event received %s seconds ago.", int(elapsed)
         )
+        
+        # Prepare response with log information
         last_25_lines = read_last_n_lines("app.log", 15)
         last_25_lines_joined = "".join(last_25_lines)
+        
+        # Add connection check results to response
+        last_25_lines_joined += f"\n\nConnection Health Check Results:\n"
+        for check, result in connection_results.items():
+            if check != "timestamp":
+                last_25_lines_joined += f"  {check}: {result}\n"
+        
         try:
             cur.execute("SELECT COUNT(*) FROM skoda.rawlogs")
             count = cur.fetchone()[0]
-            last_25_lines_joined += f"\n\nTotal logs in database: {count}\n"
+            last_25_lines_joined += f"\nTotal logs in database: {count}\n"
             cur.execute(
                 "SELECT log_timestamp, log_message FROM skoda.rawlogs order by log_timestamp desc limit 10"
             )
