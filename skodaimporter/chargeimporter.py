@@ -30,7 +30,7 @@ VIN = ""
 myskoda: Optional[Any] = None
 my_logger = get_logger("skodaimporter")
 my_logger.warning("Starting the application...")
-last_event_timeout = 12 * 60 * 60
+last_event_timeout = 4 * 60 * 60
 last_event_received = time.time()
 # Health state tracking for background task and API errors.
 _bg_task: Optional[asyncio.Task] = None
