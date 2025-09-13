@@ -165,6 +165,8 @@ pip-compile --upgrade --output-file=skodaimporter/requirements.txt skodaimporter
 - **Database connectivity**: Verify MariaDB secrets are properly configured
 - **Missing secrets**: Ensure all required secret files exist in ./secrets/
 - **Docker Alpine package issues**: If apk add fails in Docker builds, this indicates network connectivity problems that usually resolve on retry
+- **local caching** all runners should utilize local caching in the path /home/cache
+- **local runners** ensure that all actions, if possible, are running on self-hosted runners in the skoda-runner-set 
 
 ### Performance Notes
 - **NEVER CANCEL builds or tests**: Docker builds include mandatory test stages
