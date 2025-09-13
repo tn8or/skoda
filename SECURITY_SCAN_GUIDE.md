@@ -79,3 +79,4 @@ If security scans still report XSS after these fixes, consider:
 ## Contact
 
 If security alerts persist after implementing these fixes and allowing time for re-scanning, please review the specific alert details to determine if additional action is needed.
+
