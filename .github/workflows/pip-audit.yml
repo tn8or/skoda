@@ -34,8 +34,19 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: /home/cache/pip
+          key: ${{ runner.os }}-pip-audit-${{ hashFiles(format('{0}/requirements.txt', matrix.service)) }}
+          restore-keys: |
+            ${{ runner.os }}-pip-audit-
+            ${{ runner.os }}-pip-
+
       - name: Install dependencies
         working-directory: ${{ matrix.service }}
+        env:
+          PIP_CACHE_DIR: /home/cache/pip
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt

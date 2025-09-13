@@ -23,7 +23,18 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: /home/cache/pip
+          key: ${{ runner.os }}-pip-deps-${{ hashFiles('**/requirements.in') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-deps-
+            ${{ runner.os }}-pip-
+
       - name: Install pip-tools
+        env:
+          PIP_CACHE_DIR: /home/cache/pip
         run: |
           python -m pip install --upgrade pip
           pip install pip-tools

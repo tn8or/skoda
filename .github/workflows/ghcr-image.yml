@@ -43,6 +43,8 @@ jobs:
         uses: docker/setup-buildx-action@v3
         with:
           platforms: linux/amd64,linux/arm64
+          driver-opts: |
+            env.BUILDKIT_STEP_LOG_MAX_SIZE=50000000
 
       - name: Log in to the Container registry
         uses: docker/login-action@v3
@@ -86,8 +88,12 @@ jobs:
             GIT_COMMIT=${{ env.GIT_COMMIT }}
             GIT_TAG=${{ env.GIT_TAG }}
             BUILD_DATE=${{ env.BUILD_DATE }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=gha
+            type=local,src=/home/cache/docker-buildx
+          cache-to: |
+            type=gha,mode=max
+            type=local,dest=/home/cache/docker-buildx,mode=max
 
   notify-webhook:
     if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' }}
