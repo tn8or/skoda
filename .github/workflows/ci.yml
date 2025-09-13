@@ -30,13 +30,15 @@ jobs:
       - name: Cache pip
         uses: actions/cache@v4
         with:
-          path: ~/.cache/pip
+          path: /home/cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles(format('{0}/requirements.txt', matrix.service)) }}
           restore-keys: |
             ${{ runner.os }}-pip-
 
       - name: Install dependencies (only when tests exist)
         working-directory: ${{ matrix.service }}
+        env:
+          PIP_CACHE_DIR: /home/cache/pip
         run: |
           if [ -d tests ]; then \
             if [ -f requirements.txt ]; then pip install -r requirements.txt; fi; \
@@ -46,6 +48,8 @@ jobs:
 
       - name: Install pytest (if tests exist)
         working-directory: ${{ matrix.service }}
+        env:
+          PIP_CACHE_DIR: /home/cache/pip
         run: |
           if [ -d tests ]; then pip install pytest pytest-cov pytest-asyncio; fi
 
