@@ -20,7 +20,7 @@ jobs:
       packages: write
     strategy:
       # Limit concurrent builds for better batching
-      max-parallel: 4
+      max-parallel: 6
       matrix:
         include:
           - image: ghcr.io/tn8or/skodaimporter
