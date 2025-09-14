@@ -9,9 +9,15 @@ permissions:
   contents: write
   pull-requests: write
 
+# Limit concurrent dependency updates
+concurrency:
+  group: update-deps
+  cancel-in-progress: false  # Don't cancel dependency updates
+
 jobs:
   update:
     runs-on: skoda-runner-set
+    timeout-minutes: 20  # Dependency compilation should be quick
     steps:
       - name: Checkout
         uses: actions/checkout@v5
