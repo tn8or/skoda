@@ -30,15 +30,20 @@ jobs:
       - name: Cache pip
         uses: actions/cache@v4
         with:
-          path: /home/cache/pip
+          path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles(format('{0}/requirements.txt', matrix.service)) }}
           restore-keys: |
             ${{ runner.os }}-pip-
 
+      - name: Configure PyPI proxy
+        run: |
+          mkdir -p ~/.config/pip
+          echo "[global]" > ~/.config/pip/pip.conf
+          echo "index-url = http://pypi.lan:8080/simple/" >> ~/.config/pip/pip.conf
+          echo "trusted-host = pypi.lan" >> ~/.config/pip/pip.conf
+
       - name: Install dependencies (only when tests exist)
         working-directory: ${{ matrix.service }}
-        env:
-          PIP_CACHE_DIR: /home/cache/pip
         run: |
           if [ -d tests ]; then \
             if [ -f requirements.txt ]; then pip install -r requirements.txt; fi; \
@@ -48,8 +53,6 @@ jobs:
 
       - name: Install pytest (if tests exist)
         working-directory: ${{ matrix.service }}
-        env:
-          PIP_CACHE_DIR: /home/cache/pip
         run: |
           if [ -d tests ]; then pip install pytest pytest-cov pytest-asyncio; fi
 
