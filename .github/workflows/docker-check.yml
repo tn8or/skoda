@@ -1,0 +1,83 @@
+name: Docker Build Check
+
+on:
+  pull_request:
+    branches-ignore: [main]
+
+# Limit concurrent checks to reduce runner queue pressure
+concurrency:
+  group: docker-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-docker-builds:
+    runs-on: skoda-runner-set
+    timeout-minutes: 10  # Just validation should be quick
+    permissions:
+      contents: read
+    strategy:
+      # Limit concurrent validations for better batching
+      max-parallel: 3
+      matrix:
+        include:
+          - service: skodaimporter
+            context-path: ./skodaimporter
+          - service: skodachargefinder
+            context-path: ./skodachargefinder
+          - service: skodachargecollector
+            context-path: ./skodachargecollector
+          - service: skodaupdatechargeprices
+            context-path: ./skodaupdatechargeprices
+          - service: skodachargefrontend
+            context-path: ./skodachargefrontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate Dockerfile and context
+        run: |
+          echo "Validating Docker build context for ${{ matrix.service }}..."
+          
+          # Check if Dockerfile exists
+          if [ ! -f "${{ matrix.context-path }}/Dockerfile" ]; then
+            echo "❌ Dockerfile not found at ${{ matrix.context-path }}/Dockerfile"
+            exit 1
+          fi
+          
+          # Check if requirements.txt exists
+          if [ ! -f "${{ matrix.context-path }}/requirements.txt" ]; then
+            echo "❌ requirements.txt not found at ${{ matrix.context-path }}/requirements.txt"
+            exit 1
+          fi
+          
+          # Validate Dockerfile syntax by doing a dry-run build
+          echo "🔍 Validating Dockerfile syntax..."
+          docker buildx build \
+            --platform linux/amd64 \
+            --context ${{ matrix.context-path }} \
+            --file ${{ matrix.context-path }}/Dockerfile \
+            --dry-run \
+            . || {
+            echo "❌ Dockerfile validation failed for ${{ matrix.service }}"
+            exit 1
+          }
+          
+          echo "✅ Docker build validation passed for ${{ matrix.service }}"
+
+  docker-check-summary:
+    runs-on: skoda-runner-set
+    needs: validate-docker-builds
+    if: always()
+    steps:
+      - name: Check all validations passed
+        run: |
+          if [ "${{ needs.validate-docker-builds.result }}" = "success" ]; then
+            echo "✅ All Docker build validations passed"
+          else
+            echo "❌ Some Docker build validations failed"
+            exit 1
+          fi
