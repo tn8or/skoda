@@ -1,5 +1,11 @@
 name: Docker Build Check
 
+# This workflow solves the issue where test image builds from PR #54 don't appear 
+# as status checks on pull requests. The test-image.yml workflow uses workflow_run 
+# triggers which don't show up as PR checks. This lightweight validation workflow 
+# runs directly on pull_request events and provides immediate feedback on Docker 
+# build readiness without the resource cost of full image builds.
+
 on:
   pull_request:
     branches-ignore: [main]
@@ -51,6 +57,13 @@ jobs:
           # Check if requirements.txt exists
           if [ ! -f "${{ matrix.context-path }}/requirements.txt" ]; then
             echo "❌ requirements.txt not found at ${{ matrix.context-path }}/requirements.txt"
+            exit 1
+          fi
+          
+          # Check if main Python file exists (basic service structure validation)
+          python_files=$(find ${{ matrix.context-path }} -maxdepth 1 -name "*.py" | wc -l)
+          if [ "$python_files" -eq 0 ]; then
+            echo "❌ No Python files found in ${{ matrix.context-path }}"
             exit 1
           fi
           
