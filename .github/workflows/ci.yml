@@ -39,8 +39,8 @@ jobs:
         run: |
           mkdir -p ~/.config/pip
           echo "[global]" > ~/.config/pip/pip.conf
-          echo "index-url = http://my-pypi-pypi-server.pypi.svc.cluster.local:8080/simple/" >> ~/.config/pip/pip.conf
-          echo "trusted-host = my-pypi-pypi-server.pypi.svc.cluster.local" >> ~/.config/pip/pip.conf
+          echo "index-url = http://pypi.lan:8080/simple/" >> ~/.config/pip/pip.conf
+          echo "trusted-host = pypi.lan" >> ~/.config/pip/pip.conf
 
       - name: Install dependencies (only when tests exist)
         working-directory: ${{ matrix.service }}
