@@ -26,15 +26,20 @@ jobs:
       - name: Cache pip
         uses: actions/cache@v4
         with:
-          path: /home/cache/pip
+          path: ~/.cache/pip
           key: ${{ runner.os }}-pip-deps-${{ hashFiles('**/requirements.in') }}
           restore-keys: |
             ${{ runner.os }}-pip-deps-
             ${{ runner.os }}-pip-
 
+      - name: Configure PyPI proxy
+        run: |
+          mkdir -p ~/.config/pip
+          echo "[global]" > ~/.config/pip/pip.conf
+          echo "index-url = http://my-pypi-pypi-server.pypi.svc.cluster.local/simple/" >> ~/.config/pip/pip.conf
+          echo "trusted-host = my-pypi-pypi-server.pypi.svc.cluster.local" >> ~/.config/pip/pip.conf
+
       - name: Install pip-tools
-        env:
-          PIP_CACHE_DIR: /home/cache/pip
         run: |
           python -m pip install --upgrade pip
           pip install pip-tools

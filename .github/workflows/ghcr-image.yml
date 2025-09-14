@@ -90,10 +90,8 @@ jobs:
             BUILD_DATE=${{ env.BUILD_DATE }}
           cache-from: |
             type=gha
-            type=local,src=/home/cache/docker-buildx
           cache-to: |
             type=gha,mode=max
-            type=local,dest=/home/cache/docker-buildx,mode=max
 
   notify-webhook:
     if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' }}

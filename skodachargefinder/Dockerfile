@@ -12,6 +12,12 @@ ENV VIRTUAL_ENV=/opt/venv
 RUN python3 -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
+# Configure PyPI proxy
+RUN mkdir -p /root/.config/pip && \
+    echo "[global]" > /root/.config/pip/pip.conf && \
+    echo "index-url = http://my-pypi-pypi-server.pypi.svc.cluster.local/simple/" >> /root/.config/pip/pip.conf && \
+    echo "trusted-host = my-pypi-pypi-server.pypi.svc.cluster.local" >> /root/.config/pip/pip.conf
+
 # Upgrade pip and install build tools
 RUN . /opt/venv/bin/activate && pip install --no-cache-dir --upgrade pip pip-tools
 
