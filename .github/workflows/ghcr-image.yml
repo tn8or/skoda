@@ -44,6 +44,20 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Configure Docker daemon with registry proxy
+        run: |
+          # Create Docker daemon directory if it doesn't exist
+          sudo mkdir -p /etc/docker
+          
+          # Copy Docker daemon configuration with registry proxy settings
+          sudo cp .github/docker-daemon.json /etc/docker/daemon.json
+          
+          # Restart Docker daemon to apply configuration
+          sudo systemctl restart docker
+          
+          # Wait for Docker daemon to be ready
+          sleep 5
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 

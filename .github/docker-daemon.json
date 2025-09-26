@@ -1,0 +1,8 @@
+{
+  "registry-mirrors": [
+    "http://docker-registry-proxy.docker-registry-proxy.svc.cluster.local:3128"
+  ],
+  "insecure-registries": [
+    "docker-registry-proxy.docker-registry-proxy.svc.cluster.local:3128"
+  ]
+}

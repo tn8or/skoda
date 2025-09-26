@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+"""
+Test script to validate Docker registry proxy configuration
+"""
+
+import json
+import sys
+from pathlib import Path
+
+EXPECTED_REGISTRY_PROXY = "docker-registry-proxy.docker-registry-proxy.svc.cluster.local:3128"
+EXPECTED_REGISTRY_MIRROR = f"http://{EXPECTED_REGISTRY_PROXY}"
+
+
+def test_docker_daemon_config():
+    """Test that the Docker daemon configuration is valid and contains expected settings"""
+    config_path = Path(".github/docker-daemon.json")
+    
+    if not config_path.exists():
+        print(f"❌ Config file not found: {config_path}")
+        return False
+    
+    try:
+        with open(config_path) as f:
+            config = json.load(f)
+    except json.JSONDecodeError as e:
+        print(f"❌ Invalid JSON in {config_path}: {e}")
+        return False
+    
+    # Check registry mirrors
+    registry_mirrors = config.get("registry-mirrors", [])
+    if EXPECTED_REGISTRY_MIRROR not in registry_mirrors:
+        print(f"❌ Registry mirror not found: {EXPECTED_REGISTRY_MIRROR}")
+        print(f"   Found: {registry_mirrors}")
+        return False
+    
+    # Check insecure registries
+    insecure_registries = config.get("insecure-registries", [])
+    if EXPECTED_REGISTRY_PROXY not in insecure_registries:
+        print(f"❌ Insecure registry not found: {EXPECTED_REGISTRY_PROXY}")
+        print(f"   Found: {insecure_registries}")
+        return False
+    
+    print("✅ Docker daemon configuration is valid")
+    print(f"   Registry mirror: {EXPECTED_REGISTRY_MIRROR}")
+    print(f"   Insecure registry: {EXPECTED_REGISTRY_PROXY}")
+    return True
+
+
+if __name__ == "__main__":
+    success = test_docker_daemon_config()
+    sys.exit(0 if success else 1)
