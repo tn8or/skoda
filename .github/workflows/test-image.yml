@@ -11,11 +11,6 @@ on:
         required: false
         default: ''
 
-# Limit concurrent builds to reduce runner queue pressure
-concurrency:
-  group: image
-  cancel-in-progress: false  # Don't cancel builds in progress
-
 jobs:
   build-and-push-test-image:
     if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'pull_request') && github.event.workflow_run.head_branch != 'main') || github.event_name == 'workflow_dispatch' }}
@@ -29,7 +24,7 @@ jobs:
       packages: write
     strategy:
       # Limit concurrent builds for better batching
-      max-parallel: 4
+      max-parallel: 3
       matrix:
         include:
           - image: ghcr.io/tn8or/skodaimporter
