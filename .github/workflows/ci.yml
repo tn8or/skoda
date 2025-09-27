@@ -14,8 +14,6 @@ concurrency:
 jobs:
   test:
     runs-on: skoda-runner-set
-    container:
-      image: python:3.13-slim
     timeout-minutes: 30  # Tests typically take 5-15 minutes per service
     strategy:
       # Limit concurrent matrix jobs for better batching
