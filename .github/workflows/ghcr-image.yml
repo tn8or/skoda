@@ -7,7 +7,7 @@ on:
 
 # Limit concurrent builds to reduce runner queue pressure
 concurrency:
-  group: image
+  group: image-${{ github.ref }}
   cancel-in-progress: false  # Don't cancel builds in progress
 
 jobs:
