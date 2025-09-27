@@ -45,6 +45,9 @@ jobs:
       - name: Configure Docker daemon with registry proxy
         shell: sh
         run: |
+          # Install bash for better compatibility
+          apk add --no-cache bash
+          
           # For Docker-in-Docker, configure daemon directly
           mkdir -p /etc/docker
           
@@ -99,7 +102,7 @@ jobs:
 
       - name: Compute build args (commit, tag, date)
         id: buildargs
-        shell: sh
+        shell: bash
         run: |
           echo "GIT_COMMIT=${GITHUB_SHA}" >> $GITHUB_ENV
           # Best-effort tag description; falls back to short SHA

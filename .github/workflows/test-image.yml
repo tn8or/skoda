@@ -50,6 +50,9 @@ jobs:
       - name: Configure Docker daemon with registry proxy
         shell: sh
         run: |
+          # Install bash for better compatibility
+          apk add --no-cache bash
+          
           # For Docker-in-Docker, configure daemon directly
           mkdir -p /etc/docker
           
@@ -103,7 +106,7 @@ jobs:
 
       - name: Compute build args (commit, tag, date)
         id: buildargs
-        shell: sh
+        shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_run" ]; then
             echo "GIT_COMMIT=${{ github.event.workflow_run.head_sha }}" >> $GITHUB_ENV
