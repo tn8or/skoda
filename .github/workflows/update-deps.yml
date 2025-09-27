@@ -9,11 +9,6 @@ permissions:
   contents: write
   pull-requests: write
 
-# Limit concurrent dependency updates
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: false  # Don't cancel dependency updates
-
 jobs:
   update:
     runs-on: skoda-runner-set
