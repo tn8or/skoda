@@ -13,7 +13,7 @@ on:
 
 # Limit concurrent builds to reduce runner queue pressure
 concurrency:
-  group: image-${{ github.ref }}
+  group: image
   cancel-in-progress: false  # Don't cancel builds in progress
 
 jobs:
@@ -53,6 +53,7 @@ jobs:
           fetch-tags: true
 
       - name: Configure Docker daemon with registry proxy
+        shell: sh
         run: |
           # For Docker-in-Docker, configure daemon directly
           mkdir -p /etc/docker

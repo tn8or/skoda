@@ -48,6 +48,7 @@ jobs:
           fetch-tags: true
 
       - name: Configure Docker daemon with registry proxy
+        shell: sh
         run: |
           # For Docker-in-Docker, configure daemon directly
           mkdir -p /etc/docker
