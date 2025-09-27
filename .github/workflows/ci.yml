@@ -4,12 +4,9 @@ permissions:
 
 on:
   push:
+    branches: [main]
   pull_request:
-
-# Limit concurrent CI jobs to reduce runner queue pressure
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+    branches: [main]
 
 jobs:
   test:

@@ -12,10 +12,6 @@ on:
 permissions:
   contents: read
 
-# Limit concurrent audit jobs to reduce runner queue pressure
-concurrency:
-  group: pip-audit-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   audit:
