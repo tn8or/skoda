@@ -14,18 +14,18 @@ The project uses a Docker registry proxy to:
 
 ### Registry Proxy Settings
 
-- **Proxy URL**: `http://docker-registry-proxy.docker-registry-proxy.svc.cluster.local:3128`
-- **Insecure Registry**: `docker-registry-proxy.docker-registry-proxy.svc.cluster.local:3128`
+- **Proxy URL**: `http://dockerproxy.lan:80`
+- **Insecure Registry**: `dockerproxy.lan:80`
 
 The configuration is stored in `.github/docker-daemon.json`:
 
 ```json
 {
   "registry-mirrors": [
-    "http://docker-registry-proxy.docker-registry-proxy.svc.cluster.local:3128"
+    "http://dockerproxy.lan:80"
   ],
   "insecure-registries": [
-    "docker-registry-proxy.docker-registry-proxy.svc.cluster.local:3128"
+    "dockerproxy.lan:80"
   ]
 }
 ```

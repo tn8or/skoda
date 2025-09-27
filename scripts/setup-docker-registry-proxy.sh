@@ -6,7 +6,7 @@ set -e
 
 DOCKER_DAEMON_DIR="/etc/docker"
 DOCKER_DAEMON_JSON="$DOCKER_DAEMON_DIR/daemon.json"
-REGISTRY_PROXY="docker-registry-proxy.docker-registry-proxy.svc.cluster.local:3128"
+REGISTRY_PROXY="dockerproxy.lan:80"
 
 echo "Setting up Docker registry proxy configuration..."
 

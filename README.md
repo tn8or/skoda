@@ -145,8 +145,8 @@ This repository supports using a local Docker registry proxy to speed up builds 
 ### Configuration
 
 The Docker registry proxy is configured to use:
-- **Registry Mirror**: `http://docker-registry-proxy.docker-registry-proxy.svc.cluster.local:3128`  
-- **Insecure Registry**: `docker-registry-proxy.docker-registry-proxy.svc.cluster.local:3128`
+- **Registry Mirror**: `http://dockerproxy.lan:80`  
+- **Insecure Registry**: `dockerproxy.lan:80`
 
 ### Local Development Setup
 

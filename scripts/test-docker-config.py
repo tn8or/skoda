@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-EXPECTED_REGISTRY_PROXY = "docker-registry-proxy.docker-registry-proxy.svc.cluster.local:3128"
+EXPECTED_REGISTRY_PROXY = "dockerproxy.lan:80"
 EXPECTED_REGISTRY_MIRROR = f"http://{EXPECTED_REGISTRY_PROXY}"
 
 
