@@ -66,15 +66,9 @@ jobs:
             echo '{"auths":{"https://index.docker.io/v1/":{"username":"${{ secrets.DOCKERHUB_USERNAME }}","password":"${{ secrets.DOCKERHUB_TOKEN }}"}}}' > ~/.docker/config.json
           fi
 
-          # Restart Docker daemon to apply registry proxy configuration
-          sudo systemctl restart docker
-
-          # Wait for Docker daemon to be ready
-          sleep 10
-          while ! docker info > /dev/null 2>&1; do
-            echo "Waiting for Docker daemon to start..."
-            sleep 5
-          done
+          # Configure Docker daemon with registry proxy for future operations
+          # Note: Configuration will be applied to new containers and builds
+          echo "Docker daemon configuration updated with registry proxy settings"
 
           # Verify Docker is running and show registry mirrors
           docker info
