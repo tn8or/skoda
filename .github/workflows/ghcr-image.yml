@@ -54,6 +54,13 @@ jobs:
           # Copy Docker daemon configuration with registry proxy settings
           cp .github/docker-daemon.json /etc/docker/daemon.json
           
+          # Add Docker Hub authentication if credentials are available
+          if [ -n "${{ secrets.DOCKERHUB_USERNAME }}" ] && [ -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+            echo "Configuring Docker Hub authentication..."
+            mkdir -p ~/.docker
+            echo '{"auths":{"https://index.docker.io/v1/":{"username":"${{ secrets.DOCKERHUB_USERNAME }}","password":"${{ secrets.DOCKERHUB_TOKEN }}"}}}' > ~/.docker/config.json
+          fi
+          
           # Check if Docker daemon is already running, if not start it
           if ! docker info > /dev/null 2>&1; then
             echo "Starting Docker daemon..."
@@ -81,6 +88,13 @@ jobs:
           platforms: linux/amd64,linux/arm64
           driver-opts: |
             env.BUILDKIT_STEP_LOG_MAX_SIZE=50000000
+
+      - name: Log in to Docker Hub
+        if: ${{ secrets.DOCKERHUB_USERNAME && secrets.DOCKERHUB_TOKEN }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Log in to the Container registry
         uses: docker/login-action@v3

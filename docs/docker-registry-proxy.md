@@ -10,6 +10,25 @@ The project uses a Docker registry proxy to:
 - Improve build reliability in environments with limited internet connectivity
 - Support air-gapped or restricted network environments
 
+## Docker Hub Authentication
+
+To avoid Docker Hub rate limits, the workflows support Docker Hub authentication via repository secrets:
+
+- `DOCKERHUB_USERNAME`: Your Docker Hub username
+- `DOCKERHUB_TOKEN`: Your Docker Hub access token or password
+
+These secrets are optional but recommended to avoid rate limiting issues. When configured, the workflows will:
+1. Log in to Docker Hub before pulling images
+2. Configure Docker daemon authentication for subsequent operations
+3. Use the registry proxy while maintaining authentication
+
+### Setting up Docker Hub Secrets
+
+1. Create a Docker Hub access token at: https://hub.docker.com/settings/security
+2. Add the following repository secrets in GitHub:
+   - `DOCKERHUB_USERNAME`: Your Docker Hub username
+   - `DOCKERHUB_TOKEN`: The access token you created
+
 ## Configuration
 
 ### Registry Proxy Settings
