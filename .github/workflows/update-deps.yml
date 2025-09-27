@@ -11,7 +11,7 @@ permissions:
 
 # Limit concurrent dependency updates
 concurrency:
-  group: ci
+  group: ci-${{ github.ref }}
   cancel-in-progress: false  # Don't cancel dependency updates
 
 jobs:
