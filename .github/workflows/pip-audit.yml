@@ -14,8 +14,8 @@ permissions:
 
 # Limit concurrent audit jobs to reduce runner queue pressure
 concurrency:
-  group: ci
-  cancel-in-progress: true
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   audit:
