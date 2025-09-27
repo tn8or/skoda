@@ -41,8 +41,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
-          # Checkout the triggering branch/commit for test builds
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          # Security: Always checkout main branch, not potentially untrusted PR code
+          # This ensures we build from trusted source even for test builds
+          ref: main
           fetch-depth: 0
           fetch-tags: true
 
