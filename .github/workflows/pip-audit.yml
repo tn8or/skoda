@@ -1,20 +1,26 @@
 name: pip-audit
 
-on:
-  workflow_dispatch:
+# This workflow runs second in the sequence: CI → pip-audit → image workflows
+"on":
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
   schedule:
     - cron: "0 5 * * 1" # Mondays 05:00 UTC
 
 permissions:
   contents: read
 
+concurrency:
+  group: pipaudit-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   audit:
+    # Run if CI succeeded, or if it's scheduled/manual dispatch
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: skoda-runner-set
     timeout-minutes: 15  # Security audits should be quick
     strategy:
