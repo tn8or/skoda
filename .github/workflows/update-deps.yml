@@ -11,7 +11,7 @@ permissions:
 
 # Limit concurrent dependency updates
 concurrency:
-  group: update-deps
+  group: ci
   cancel-in-progress: false  # Don't cancel dependency updates
 
 jobs:

@@ -14,7 +14,7 @@ permissions:
 
 # Limit concurrent audit jobs to reduce runner queue pressure
 concurrency:
-  group: pip-audit-${{ github.ref }}
+  group: ci
   cancel-in-progress: true
 
 jobs:
@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 15  # Security audits should be quick
     strategy:
       # Limit concurrent audits for better batching
-      max-parallel: 3
+      max-parallel: 4
       matrix:
         service:
           [
