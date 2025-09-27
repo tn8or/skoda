@@ -14,6 +14,9 @@ jobs:
   build-and-push-test-image:
     if: ${{ github.event.workflow_run.conclusion == 'success' && (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'pull_request') && github.event.workflow_run.head_branch != 'main' }}
     runs-on: skoda-runner-set
+    container:
+      image: docker:27-dind
+      options: --privileged --user root
     timeout-minutes: 90  # Docker builds take 60-90 minutes according to docs
     permissions:
       contents: read
@@ -45,17 +48,17 @@ jobs:
 
       - name: Configure Docker daemon with registry proxy
         run: |
-          # Create Docker daemon directory if it doesn't exist
-          sudo mkdir -p /etc/docker
+          # For Docker-in-Docker, configure daemon directly
+          mkdir -p /etc/docker
           
           # Copy Docker daemon configuration with registry proxy settings
-          sudo cp .github/docker-daemon.json /etc/docker/daemon.json
+          cp .github/docker-daemon.json /etc/docker/daemon.json
           
-          # Restart Docker daemon to apply configuration
-          sudo systemctl restart docker
+          # Start Docker daemon in background for DinD
+          dockerd --host=unix:///var/run/docker.sock --host=tcp://0.0.0.0:2375 &
           
           # Wait for Docker daemon to be ready
-          sleep 5
+          sleep 10
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -116,6 +119,9 @@ jobs:
   notify-test-webhook:
     if: ${{ github.event.workflow_run.conclusion == 'success' && (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'pull_request') && github.event.workflow_run.head_branch != 'main' }}
     runs-on: skoda-runner-set
+    container:
+      image: alpine:3.19
+      options: --user root
     timeout-minutes: 5  # Webhook calls should be quick
     permissions: {}
     needs: build-and-push-test-image

@@ -36,32 +36,67 @@ The configuration is stored in `.github/docker-daemon.json`:
 
 The Docker registry proxy is automatically configured in all GitHub Actions workflows:
 
-1. **CI Workflow** (`.github/workflows/ci.yml`)
-2. **Docker Build Workflow** (`.github/workflows/ghcr-image.yml`)  
-3. **Test Image Workflow** (`.github/workflows/test-image.yml`)
+1. **CI Workflow** (`.github/workflows/ci.yml`) - Uses `python:3.13-slim` container
+2. **Docker Build Workflow** (`.github/workflows/ghcr-image.yml`) - Uses `docker:27-dind` container with Docker-in-Docker
+3. **Test Image Workflow** (`.github/workflows/test-image.yml`) - Uses `docker:27-dind` container with Docker-in-Docker
+4. **Pip Audit Workflow** (`.github/workflows/pip-audit.yml`) - Uses `python:3.13-slim` container
+5. **Update Dependencies Workflow** (`.github/workflows/update-deps.yml`) - Uses `python:3.13-slim` container
+
+All workflows are configured with `container:` specifications to support Kubernetes mode self-hosted runners.
 
 Each workflow includes a step that:
 1. Creates the Docker daemon configuration directory
 2. Copies the registry proxy configuration
-3. Restarts the Docker daemon
-4. Waits for the daemon to be ready
+3. For Docker-in-Docker workflows: Starts dockerd with the configuration
+4. For Python-only workflows: Uses pre-configured container images
+5. Waits for services to be ready
 
-### Example Workflow Step
+### Container Specifications for Kubernetes Mode
+
+All workflows support Kubernetes mode self-hosted runners with appropriate container specifications:
+
+- **Python workflows**: Use `python:3.13-slim` with `--user root` options
+- **Docker workflows**: Use `docker:27-dind` with `--privileged --user root` options  
+- **Webhook workflows**: Use `alpine:3.19` with `--user root` options
+
+### Example Workflow Step (Docker-in-Docker)
 
 ```yaml
-- name: Configure Docker daemon with registry proxy
-  run: |
-    # Create Docker daemon directory if it doesn't exist
-    sudo mkdir -p /etc/docker
-    
-    # Copy Docker daemon configuration with registry proxy settings
-    sudo cp .github/docker-daemon.json /etc/docker/daemon.json
-    
-    # Restart Docker daemon to apply configuration
-    sudo systemctl restart docker
-    
-    # Wait for Docker daemon to be ready
-    sleep 5
+jobs:
+  build-and-push-image:
+    runs-on: skoda-runner-set
+    container:
+      image: docker:27-dind
+      options: --privileged --user root
+    steps:
+      - name: Configure Docker daemon with registry proxy
+        run: |
+          # For Docker-in-Docker, configure daemon directly
+          mkdir -p /etc/docker
+          
+          # Copy Docker daemon configuration with registry proxy settings
+          cp .github/docker-daemon.json /etc/docker/daemon.json
+          
+          # Start Docker daemon in background for DinD
+          dockerd --host=unix:///var/run/docker.sock --host=tcp://0.0.0.0:2375 &
+          
+          # Wait for Docker daemon to be ready
+          sleep 10
+```
+
+### Example Workflow Step (Python-only)
+
+```yaml
+jobs:
+  test:
+    runs-on: skoda-runner-set
+    container:
+      image: python:3.13-slim
+      options: --user root
+    steps:
+      # Docker registry proxy not needed for Python-only workflows
+      - name: Checkout
+        uses: actions/checkout@v5
 ```
 
 ## Local Development

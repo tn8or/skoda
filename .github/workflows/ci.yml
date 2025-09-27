@@ -14,6 +14,9 @@ concurrency:
 jobs:
   test:
     runs-on: skoda-runner-set
+    container:
+      image: python:3.13-slim
+      options: --user root
     timeout-minutes: 30  # Tests typically take 5-15 minutes per service
     strategy:
       # Limit concurrent matrix jobs for better batching
@@ -28,20 +31,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-        
-      - name: Configure Docker daemon with registry proxy  
-        run: |
-          # Create Docker daemon directory if it doesn't exist
-          sudo mkdir -p /etc/docker
-          
-          # Copy Docker daemon configuration with registry proxy settings
-          sudo cp .github/docker-daemon.json /etc/docker/daemon.json
-          
-          # Restart Docker daemon to apply configuration
-          sudo systemctl restart docker
-          
-          # Wait for Docker daemon to be ready
-          sleep 5
           
       - name: Set up Python
         uses: actions/setup-python@v6

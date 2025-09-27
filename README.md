@@ -176,10 +176,13 @@ The setup script will:
 ### GitHub Actions
 
 The registry proxy is automatically configured in all GitHub Actions workflows that use Docker:
-- **CI Workflow** (`ci.yml`): Configures proxy before running tests
-- **Docker Build Workflow** (`ghcr-image.yml`): Configures proxy before building images
+- **CI Workflow** (`ci.yml`): Uses `python:3.13-slim` container for testing
+- **Docker Build Workflow** (`ghcr-image.yml`): Uses `docker:27-dind` for building production images
+- **Test Image Workflow** (`test-image.yml`): Uses `docker:27-dind` for building test images
+- **Pip Audit Workflow** (`pip-audit.yml`): Uses `python:3.13-slim` for security scanning
+- **Update Dependencies Workflow** (`update-deps.yml`): Uses `python:3.13-slim` for dependency updates
 
-This ensures consistent Docker image resolution across all build environments.
+All workflows support Kubernetes mode self-hosted runners with appropriate container specifications.
 
 ## Author
 
