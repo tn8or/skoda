@@ -18,9 +18,11 @@ To avoid Docker Hub rate limits, the workflows support Docker Hub authentication
 - `DOCKERHUB_TOKEN`: Your Docker Hub access token or password
 
 These secrets are optional but recommended to avoid rate limiting issues. When configured, the workflows will:
-1. Log in to Docker Hub before pulling images
+1. Log in to Docker Hub before starting any Docker operations
 2. Configure Docker daemon authentication for subsequent operations
 3. Use the registry proxy while maintaining authentication
+
+**Important**: The Docker Hub authentication now occurs at the workflow level before any Docker images are pulled, which prevents rate limiting issues during the initial container setup.
 
 ### Setting up Docker Hub Secrets
 
@@ -56,62 +58,70 @@ The configuration is stored in `.github/docker-daemon.json`:
 The Docker registry proxy is automatically configured in all GitHub Actions workflows:
 
 1. **CI Workflow** (`.github/workflows/ci.yml`) - Uses `python:3.13-slim` container
-2. **Docker Build Workflow** (`.github/workflows/ghcr-image.yml`) - Uses `docker:27-dind` container with Docker-in-Docker
-3. **Test Image Workflow** (`.github/workflows/test-image.yml`) - Uses `docker:27-dind` container with Docker-in-Docker
+2. **Docker Build Workflow** (`.github/workflows/ghcr-image.yml`) - Runs on self-hosted runner with Docker daemon configuration
+3. **Test Image Workflow** (`.github/workflows/test-image.yml`) - Runs on self-hosted runner with Docker daemon configuration
 4. **Pip Audit Workflow** (`.github/workflows/pip-audit.yml`) - Uses `python:3.13-slim` container
 5. **Update Dependencies Workflow** (`.github/workflows/update-deps.yml`) - Uses `python:3.13-slim` container
 
-All workflows are configured with `container:` specifications to support Kubernetes mode self-hosted runners.
+**Note**: The Docker Build and Test Image workflows have been modified to run directly on self-hosted runners instead of using `docker:27-dind` containers. This approach prevents Docker Hub rate limiting issues during the initial container image pull by authenticating with Docker Hub before any Docker operations begin.
 
-Each workflow includes a step that:
-1. Creates the Docker daemon configuration directory
-2. Copies the registry proxy configuration
-3. For Docker-in-Docker workflows: Starts dockerd with the configuration
-4. For Python-only workflows: Uses pre-configured container images
-5. Waits for services to be ready
+Each Docker workflow includes steps that:
+1. Authenticate with Docker Hub before any Docker operations
+2. Create the Docker daemon configuration directory
+3. Copy the registry proxy configuration
+4. Restart the Docker daemon to apply configurations
+5. Wait for services to be ready
 
 ### Container Specifications for Kubernetes Mode
 
 All workflows support Kubernetes mode self-hosted runners with appropriate container specifications:
 
 - **Python workflows**: Use `python:3.13-slim` container
-- **Docker workflows**: Use `docker:27-dind` with `--privileged` options  
+- **Docker workflows**: Run directly on self-hosted runners without container specification to avoid Docker Hub rate limits
 - **Webhook workflows**: Use `alpine:3.19` container
 
-**Note**: Container options like `--user root` have been removed to improve compatibility with Kubernetes mode runners.
+**Note**: The Docker Build and Test Image workflows have been modified to run directly on self-hosted runners instead of using container specifications. This prevents Docker Hub rate limiting issues when GitHub Actions tries to pull the job container image.
 
-### Example Workflow Step (Docker-in-Docker)
+### Example Workflow Step (Docker on Self-hosted Runner)
 
 ```yaml
 jobs:
   build-and-push-image:
     runs-on: skoda-runner-set
-    container:
-      image: docker:27-dind
-      options: --privileged
+    timeout-minutes: 90
     steps:
-      - name: Configure Docker daemon with registry proxy
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Log in to Docker Hub (before Docker operations)
+        continue-on-error: true
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker with registry proxy
         run: |
-          # For Docker-in-Docker, configure daemon directly
-          mkdir -p /etc/docker
+          # Configure Docker daemon with registry proxy
+          sudo mkdir -p /etc/docker
+          sudo cp .github/docker-daemon.json /etc/docker/daemon.json
           
-          # Copy Docker daemon configuration with registry proxy settings
-          cp .github/docker-daemon.json /etc/docker/daemon.json
-          
-          # Check if Docker daemon is already running, if not start it
-          if ! docker info > /dev/null 2>&1; then
-            echo "Starting Docker daemon..."
-            dockerd-entrypoint.sh &
-            
-            # Wait for Docker daemon to be ready
-            sleep 15
-            
-            # Wait for Docker socket to be available
-            while ! docker info > /dev/null 2>&1; do
-              echo "Waiting for Docker daemon to start..."
-              sleep 5
-            done
+          # Add Docker Hub authentication if credentials are available
+          if [ -n "${{ secrets.DOCKERHUB_USERNAME }}" ] && [ -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+            echo "Configuring Docker Hub authentication..."
+            mkdir -p ~/.docker
+            echo '{"auths":{"https://index.docker.io/v1/":{"username":"${{ secrets.DOCKERHUB_USERNAME }}","password":"${{ secrets.DOCKERHUB_TOKEN }}"}}}' > ~/.docker/config.json
           fi
+          
+          # Restart Docker daemon to apply registry proxy configuration
+          sudo systemctl restart docker
+          
+          # Wait for Docker daemon to be ready
+          sleep 10
+          while ! docker info > /dev/null 2>&1; do
+            echo "Waiting for Docker daemon to start..."
+            sleep 5
+          done
           
           # Verify Docker is running and show registry mirrors
           docker info
@@ -186,15 +196,21 @@ docker info | grep -A 10 "Registry Mirrors"
    - Check if the proxy service is running in the cluster
    - Confirm insecure registry configuration is correct
 
-4. **Kubernetes Mode Issues**
+4. **Docker Hub Rate Limit Issues**
+   - Set up Docker Hub authentication via repository secrets: `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`
+   - The workflows now authenticate with Docker Hub before any Docker operations to prevent rate limiting
+   - If rate limits persist, verify the Docker Hub credentials are correct
+   - Consider using a Docker registry proxy for additional caching
+
+5. **Kubernetes Mode Issues**
    - Container options like `--user root` can cause permission issues in Kubernetes
    - Use minimal container options for better compatibility
    - Check that the container image is accessible from the Kubernetes cluster
 
-5. **Docker-in-Docker Issues**
-   - Ensure `--privileged` option is set for DinD containers
-   - Use `dockerd-entrypoint.sh` instead of manually starting dockerd
-   - Wait for Docker daemon to be fully ready before proceeding
+6. **Self-hosted Runner Docker Issues**
+   - Ensure Docker is installed and running on the self-hosted runner
+   - Verify the runner user has `sudo` privileges for Docker daemon configuration
+   - Check that the Docker daemon can be restarted via `systemctl`
 
 ### Restoration
 
