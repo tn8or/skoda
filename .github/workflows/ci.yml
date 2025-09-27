@@ -6,11 +6,6 @@ on:
   push:
   pull_request:
 
-# Limit concurrent CI jobs to reduce runner queue pressure
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   test:
     runs-on: skoda-runner-set

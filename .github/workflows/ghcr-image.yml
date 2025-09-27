@@ -5,11 +5,6 @@ on:
     workflows: ["CI"]
     types: [completed]
 
-# Limit concurrent builds to reduce runner queue pressure
-concurrency:
-  group: build-images-${{ github.ref }}
-  cancel-in-progress: false  # Don't cancel builds in progress
-
 jobs:
   build-and-push-image:
     if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' }}
@@ -23,7 +18,7 @@ jobs:
       packages: write
     strategy:
       # Limit concurrent builds for better batching
-      max-parallel: 6
+      max-parallel: 3
       matrix:
         include:
           - image: ghcr.io/tn8or/skodaimporter
@@ -48,7 +43,11 @@ jobs:
           fetch-tags: true
 
       - name: Configure Docker daemon with registry proxy
+        shell: sh
         run: |
+          # Install bash for better compatibility
+          apk add --no-cache bash
+          
           # For Docker-in-Docker, configure daemon directly
           mkdir -p /etc/docker
           
