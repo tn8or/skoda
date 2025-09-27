@@ -16,7 +16,6 @@ jobs:
     runs-on: skoda-runner-set
     container:
       image: docker:27-dind
-      options: --privileged
     timeout-minutes: 90  # Docker builds take 60-90 minutes according to docs
     permissions:
       contents: read
