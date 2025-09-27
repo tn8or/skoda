@@ -14,8 +14,6 @@ jobs:
   build-and-push-image:
     if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' }}
     runs-on: skoda-runner-set
-    container:
-      image: docker:27-dind
     timeout-minutes: 90  # Docker builds take 60-90 minutes according to docs
     permissions:
       contents: read
@@ -132,8 +130,6 @@ jobs:
   notify-webhook:
     if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' }}
     runs-on: skoda-runner-set
-    container:
-      image: alpine:3.19
     timeout-minutes: 5  # Webhook calls should be quick
     permissions: {}
     needs: build-and-push-image
