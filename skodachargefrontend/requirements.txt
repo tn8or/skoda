@@ -6,7 +6,7 @@
 #
 annotated-types==0.7.0
     # via pydantic
-anyio==4.10.0
+anyio==4.11.0
     # via
     #   httpx
     #   starlette
@@ -51,7 +51,7 @@ typing-extensions==4.15.0
     #   typing-inspection
 typing-inspection==0.4.1
     # via pydantic
-uvicorn==0.36.0
+uvicorn==0.37.0
     # via -r requirements.in
 watchfiles==1.1.0
     # via -r requirements.in
