@@ -2,9 +2,10 @@ name: pip-audit
 
 # This workflow runs second in the sequence: CI → pip-audit → image workflows
 "on":
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
   schedule:
     - cron: "0 5 * * 1" # Mondays 05:00 UTC
@@ -12,6 +13,9 @@ name: pip-audit
 permissions:
   contents: read
 
+concurrency:
+  group: pipaudit-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   audit:
@@ -21,7 +25,7 @@ jobs:
     timeout-minutes: 15  # Security audits should be quick
     strategy:
       # Limit concurrent audits for better batching
-      max-parallel: 5
+      max-parallel: 3
       matrix:
         service:
           [
