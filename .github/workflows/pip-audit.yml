@@ -1,7 +1,7 @@
 name: pip-audit
 
 # This workflow runs second in the sequence: CI → pip-audit → image workflows
-on:
+"on":
   workflow_run:
     workflows: ["CI"]
     types: [completed]

@@ -4,7 +4,7 @@ permissions:
 
 # This workflow runs first in the sequence: CI → pip-audit → image workflows
 # CodeQL (if enabled) runs automatically via GitHub's built-in security features
-on:
+"on":
   push:
     branches: [main]
   pull_request:
