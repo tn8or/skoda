@@ -101,7 +101,7 @@ jobs:
 
       - name: Compute build args (commit, tag, date)
         id: buildargs
-        shell: bash
+        shell: sh
         run: |
           echo "GIT_COMMIT=${{ github.event.workflow_run.head_sha }}" >> $GITHUB_ENV
           # Best-effort tag description; falls back to short SHA
