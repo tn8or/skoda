@@ -2,21 +2,22 @@ name: CI
 permissions:
   contents: read
 
-# This workflow runs first in the sequence: CI → pip-audit → image workflows
-# CodeQL (if enabled) runs automatically via GitHub's built-in security features
 "on":
   push:
     branches: [main]
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: skoda-runner-set
-    timeout-minutes: 30  # Tests typically take 5-15 minutes per service
     strategy:
       # Limit concurrent matrix jobs for better batching
-      max-parallel: 5
+      max-parallel: 3
       matrix:
         service:
           - skodachargecollector
