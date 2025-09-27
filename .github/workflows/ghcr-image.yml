@@ -44,6 +44,32 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Configure Docker daemon with registry proxy
+        run: |
+          # For Docker-in-Docker, configure daemon directly
+          mkdir -p /etc/docker
+          
+          # Copy Docker daemon configuration with registry proxy settings
+          cp .github/docker-daemon.json /etc/docker/daemon.json
+          
+          # Check if Docker daemon is already running, if not start it
+          if ! docker info > /dev/null 2>&1; then
+            echo "Starting Docker daemon..."
+            dockerd-entrypoint.sh &
+            
+            # Wait for Docker daemon to be ready
+            sleep 15
+            
+            # Wait for Docker socket to be available
+            while ! docker info > /dev/null 2>&1; do
+              echo "Waiting for Docker daemon to start..."
+              sleep 5
+            done
+          fi
+          
+          # Verify Docker is running and show registry mirrors
+          docker info
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 

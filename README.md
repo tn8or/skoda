@@ -138,6 +138,52 @@ PRs and issues are welcome—especially improvements, bug fixes, and docs. This 
 
 MIT — see [LICENSE](LICENSE).
 
+## Docker Registry Proxy
+
+This repository supports using a local Docker registry proxy to speed up builds and reduce external dependencies. The proxy configuration is automatically applied in GitHub Actions workflows.
+
+### Configuration
+
+The Docker registry proxy is configured to use:
+- **Registry Mirror**: `http://dockerproxy.lan:80`  
+- **Insecure Registry**: `dockerproxy.lan:80`
+
+### Local Development Setup
+
+To configure your local Docker daemon with the registry proxy:
+
+```bash
+# Setup Docker registry proxy
+sudo ./scripts/setup-docker-registry-proxy.sh
+
+# Restore original configuration (if needed)
+sudo ./scripts/restore-docker-config.sh
+```
+
+Alternatively, when using the `compose.sh` script, you can enable registry proxy configuration:
+
+```bash
+# Enable Docker registry proxy during build
+DOCKER_REGISTRY_PROXY=true sudo ./compose.sh up
+```
+
+The setup script will:
+1. Backup your existing Docker daemon configuration
+2. Configure Docker to use the registry proxy
+3. Restart the Docker daemon
+4. Verify the configuration is working
+
+### GitHub Actions
+
+The registry proxy is automatically configured in all GitHub Actions workflows that use Docker:
+- **CI Workflow** (`ci.yml`): Uses `python:3.13-slim` container for testing
+- **Docker Build Workflow** (`ghcr-image.yml`): Uses `docker:27-dind` for building production images
+- **Test Image Workflow** (`test-image.yml`): Uses `docker:27-dind` for building test images
+- **Pip Audit Workflow** (`pip-audit.yml`): Uses `python:3.13-slim` for security scanning
+- **Update Dependencies Workflow** (`update-deps.yml`): Uses `python:3.13-slim` for dependency updates
+
+All workflows support Kubernetes mode self-hosted runners with minimal container options for better compatibility.
+
 ## Author
 
 Mostly GitHub Copilot, with a bit by Tommy Eriksen.
