@@ -19,7 +19,6 @@ jobs:
     runs-on: skoda-runner-set
     container:
       image: python:3.13-slim
-      options: --user root
     timeout-minutes: 20  # Dependency compilation should be quick
     steps:
       - name: Checkout

@@ -182,7 +182,7 @@ The registry proxy is automatically configured in all GitHub Actions workflows t
 - **Pip Audit Workflow** (`pip-audit.yml`): Uses `python:3.13-slim` for security scanning
 - **Update Dependencies Workflow** (`update-deps.yml`): Uses `python:3.13-slim` for dependency updates
 
-All workflows support Kubernetes mode self-hosted runners with appropriate container specifications.
+All workflows support Kubernetes mode self-hosted runners with minimal container options for better compatibility.
 
 ## Author
 

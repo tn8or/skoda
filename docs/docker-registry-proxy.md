@@ -55,9 +55,11 @@ Each workflow includes a step that:
 
 All workflows support Kubernetes mode self-hosted runners with appropriate container specifications:
 
-- **Python workflows**: Use `python:3.13-slim` with `--user root` options
-- **Docker workflows**: Use `docker:27-dind` with `--privileged --user root` options  
-- **Webhook workflows**: Use `alpine:3.19` with `--user root` options
+- **Python workflows**: Use `python:3.13-slim` container
+- **Docker workflows**: Use `docker:27-dind` with `--privileged` options  
+- **Webhook workflows**: Use `alpine:3.19` container
+
+**Note**: Container options like `--user root` have been removed to improve compatibility with Kubernetes mode runners.
 
 ### Example Workflow Step (Docker-in-Docker)
 
@@ -67,7 +69,7 @@ jobs:
     runs-on: skoda-runner-set
     container:
       image: docker:27-dind
-      options: --privileged --user root
+      options: --privileged
     steps:
       - name: Configure Docker daemon with registry proxy
         run: |
@@ -77,11 +79,23 @@ jobs:
           # Copy Docker daemon configuration with registry proxy settings
           cp .github/docker-daemon.json /etc/docker/daemon.json
           
-          # Start Docker daemon in background for DinD
-          dockerd --host=unix:///var/run/docker.sock --host=tcp://0.0.0.0:2375 &
+          # Check if Docker daemon is already running, if not start it
+          if ! docker info > /dev/null 2>&1; then
+            echo "Starting Docker daemon..."
+            dockerd-entrypoint.sh &
+            
+            # Wait for Docker daemon to be ready
+            sleep 15
+            
+            # Wait for Docker socket to be available
+            while ! docker info > /dev/null 2>&1; do
+              echo "Waiting for Docker daemon to start..."
+              sleep 5
+            done
+          fi
           
-          # Wait for Docker daemon to be ready
-          sleep 10
+          # Verify Docker is running and show registry mirrors
+          docker info
 ```
 
 ### Example Workflow Step (Python-only)
@@ -92,7 +106,6 @@ jobs:
     runs-on: skoda-runner-set
     container:
       image: python:3.13-slim
-      options: --user root
     steps:
       # Docker registry proxy not needed for Python-only workflows
       - name: Checkout
@@ -153,6 +166,16 @@ docker info | grep -A 10 "Registry Mirrors"
    - Verify network connectivity to the proxy URL
    - Check if the proxy service is running in the cluster
    - Confirm insecure registry configuration is correct
+
+4. **Kubernetes Mode Issues**
+   - Container options like `--user root` can cause permission issues in Kubernetes
+   - Use minimal container options for better compatibility
+   - Check that the container image is accessible from the Kubernetes cluster
+
+5. **Docker-in-Docker Issues**
+   - Ensure `--privileged` option is set for DinD containers
+   - Use `dockerd-entrypoint.sh` instead of manually starting dockerd
+   - Wait for Docker daemon to be fully ready before proceeding
 
 ### Restoration
 
