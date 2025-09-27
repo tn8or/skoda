@@ -21,7 +21,7 @@ jobs:
   audit:
     runs-on: skoda-runner-set
     container:
-      image: python:3.13-slim
+      image: python:3.13
     timeout-minutes: 15  # Security audits should be quick
     strategy:
       # Limit concurrent audits for better batching
