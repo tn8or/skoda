@@ -147,7 +147,9 @@ jobs:
             type=gha,mode=max
 
   notify-test-webhook:
-    if: ${{ (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch != 'main') || github.event_name == 'pull_request' }}
+    # Trigger webhook for: non-main branch pushes, PRs, or manual dispatches
+    # Note: PRs come via workflow_run so check github.event.workflow_run.event, not github.event_name
+    if: ${{ (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch != 'main') || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request') || github.event_name == 'workflow_dispatch' }}
     runs-on: skoda-runner-set
     timeout-minutes: 5 # Webhook calls should be quick
     permissions: {}
