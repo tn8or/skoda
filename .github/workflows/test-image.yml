@@ -9,16 +9,20 @@ name: Create and publish test Docker images
   workflow_dispatch:
     inputs:
       branch:
-        description: 'Branch to build test images for'
+        description: "Branch to build test images for"
         required: false
-        default: ''
+        default: ""
+
+concurrency:
+  group: testimage-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-push-test-image:
     # Build test images for PRs and non-main branch pushes, or for manual triggers
     if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.head_branch != 'main')) || github.event_name == 'workflow_dispatch' }}
     runs-on: skoda-runner-set
-    timeout-minutes: 90  # Docker builds take 60-90 minutes according to docs
+    timeout-minutes: 90 # Docker builds take 60-90 minutes according to docs
     permissions:
       contents: read
       packages: write
@@ -137,15 +141,15 @@ jobs:
             GIT_COMMIT=${{ env.GIT_COMMIT }}
             GIT_TAG=${{ env.GIT_TAG }}
             BUILD_DATE=${{ env.BUILD_DATE }}
-          #cache-from: |
-          #  type=gha
-          #cache-to: |
-          #  type=gha,mode=max
+          cache-from: |
+            type=gha
+          cache-to: |
+            type=gha,mode=max
 
   notify-test-webhook:
     if: ${{ (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch != 'main') || github.event_name == 'pull_request' }}
     runs-on: skoda-runner-set
-    timeout-minutes: 5  # Webhook calls should be quick
+    timeout-minutes: 5 # Webhook calls should be quick
     permissions: {}
     needs: build-and-push-test-image
     steps:

@@ -6,6 +6,10 @@ name: Create and publish Docker images
     workflows: ["pip-audit"]
     types: [completed]
 
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-push-image:
     # Build production images only for pushes to main branch (not PRs)
@@ -127,10 +131,10 @@ jobs:
             GIT_COMMIT=${{ env.GIT_COMMIT }}
             GIT_TAG=${{ env.GIT_TAG }}
             BUILD_DATE=${{ env.BUILD_DATE }}
-          #cache-from: |
-          #  type=gha
-          #cache-to: |
-          #  type=gha,mode=max
+          cache-from: |
+            type=gha
+          cache-to: |
+            type=gha,mode=max
 
   notify-webhook:
     if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' }}
