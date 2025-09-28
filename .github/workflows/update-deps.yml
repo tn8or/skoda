@@ -9,10 +9,14 @@ permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: updatedep-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   update:
     runs-on: skoda-runner-set
-    timeout-minutes: 20  # Dependency compilation should be quick
+    timeout-minutes: 20 # Dependency compilation should be quick
     steps:
       - name: Checkout
         uses: actions/checkout@v5

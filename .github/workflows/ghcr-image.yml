@@ -6,6 +6,10 @@ name: Create and publish Docker images
     workflows: ["pip-audit"]
     types: [completed]
 
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-push-image:
     # Build production images only for pushes to main branch (not PRs)
