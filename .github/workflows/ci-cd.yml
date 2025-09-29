@@ -27,7 +27,7 @@ jobs:
   test:
     runs-on: skoda-runner-set
     strategy:
-      max-parallel: 3
+      max-parallel: 5
       matrix:
         service:
           - skodachargecollector
@@ -86,7 +86,7 @@ jobs:
     runs-on: skoda-runner-set
     timeout-minutes: 15
     strategy:
-      max-parallel: 3
+      max-parallel: 5
       matrix:
         service:
           - skodaimporter
