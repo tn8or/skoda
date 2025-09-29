@@ -3,7 +3,7 @@ name: Create and publish Docker images
 # This workflow runs third in the sequence: CI → pip-audit → image workflows
 "on":
   workflow_run:
-    workflows: ["CI"]
+    workflows: ["CI","pip-audit"]
     types: [completed]
 
 concurrency:
