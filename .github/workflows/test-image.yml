@@ -1,10 +1,10 @@
 name: Create and publish test Docker images
 
-# This workflow runs third in the sequence: CI → pip-audit → image workflows (parallel with ghcr-image)
+# This workflow runs third in the sequence: CI → image workflows (parallel with ghcr-image)
 # Note: Removed direct pull_request trigger to ensure sequential execution
 "on":
   workflow_run:
-    workflows: ["pip-audit"]
+    workflows: ["CI"]
     types: [completed]
   workflow_dispatch:
     inputs:
