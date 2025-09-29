@@ -4,7 +4,7 @@ name: Create and publish test Docker images
 # Note: Removed direct pull_request trigger to ensure sequential execution
 "on":
   workflow_run:
-    workflows: ["CI"]
+    workflows: ["CI","pip-audit"]
     types: [completed]
   workflow_dispatch:
     inputs:
