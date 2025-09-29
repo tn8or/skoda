@@ -21,7 +21,7 @@ jobs:
   build-and-push-test-image:
     # Build test images for PRs and non-main branch pushes, or for manual triggers
     # Note: workflow_run.conclusion check is redundant since this workflow only runs on successful pip-audit completion
-    if: ${{ (github.event_name == 'workflow_run' && (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.head_branch != 'main')) || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: skoda-runner-set
     timeout-minutes: 90 # Docker builds take 60-90 minutes according to docs
     permissions:
@@ -151,7 +151,7 @@ jobs:
     # Trigger webhook for: non-main branch pushes, PRs, or manual dispatches
     # Note: PRs come via workflow_run so check github.event.workflow_run.event, not github.event_name
     # The workflow_run.conclusion check is redundant since this workflow only runs on successful pip-audit completion
-    if: ${{ (github.event_name == 'workflow_run' && (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.head_branch != 'main')) || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: skoda-runner-set
     timeout-minutes: 5 # Webhook calls should be quick
     permissions: {}
