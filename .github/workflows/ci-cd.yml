@@ -97,6 +97,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
       - name: Upgrade pip securely via proxy
         run: |
           mkdir -p ~/.config/pip
@@ -104,11 +109,6 @@ jobs:
           echo "index-url = http://pypi.lan:8080/simple/" >> ~/.config/pip/pip.conf
           echo "trusted-host = pypi.lan" >> ~/.config/pip/pip.conf
           python -m pip install --upgrade pip
-      # Your other audit steps...
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
 
       - name: Cache pip
         uses: actions/cache@v4
