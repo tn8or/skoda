@@ -97,18 +97,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-
-      - name: Upgrade pip securely via proxy
-        run: |
-          mkdir -p ~/.config/pip
-          echo "[global]" > ~/.config/pip/pip.conf
-          echo "index-url = http://pypi.lan:8080/simple/" >> ~/.config/pip/pip.conf
-          echo "trusted-host = pypi.lan" >> ~/.config/pip/pip.conf
-          python -m pip install --upgrade pip
 
       - name: Cache pip
         uses: actions/cache@v4
@@ -125,25 +118,19 @@ jobs:
           echo "index-url = http://pypi.lan:8080/simple/" >> ~/.config/pip/pip.conf
           echo "trusted-host = pypi.lan" >> ~/.config/pip/pip.conf
 
+      - name: Upgrade pip securely via proxy
+        run: |
+          python -m pip install --upgrade pip
 
       - name: Install pip-audit
         run: pip install pip-audit
-
-      - name: Install service dependencies for audit
-        working-directory: ${{ matrix.service }}
-        run: |
-          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt
-          else
-            echo "No requirements.txt found in ${{ matrix.service }}"
-          fi
 
       - name: Run pip-audit
         working-directory: ${{ matrix.service }}
         run: |
           if [ -f requirements.txt ]; then
-            pip-audit --desc --format=json --output=audit-results.json || true
-            pip-audit --desc
+            pip-audit -r requirements.txt --desc --format=json --output=audit-results.json || true
+            pip-audit -r requirements.txt --desc
           else
             echo "No requirements.txt found in ${{ matrix.service }}, skipping audit"
           fi
@@ -156,6 +143,7 @@ jobs:
           path: ${{ matrix.service }}/audit-results.json
           if-no-files-found: ignore
 
+          
   # Step 3a: Build test images (for non-main branches and PRs)
   build-test-images:
     if: github.ref != 'refs/heads/main'
