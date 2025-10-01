@@ -187,7 +187,7 @@ async def root(
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Charge Summary for {escape_html(year)}-{month:02d}</title>
+        <title>Charge Summary for {escape_html(year)}-{escape_html(month):0>2}</title>
         <link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
         <style>
             .divTable {{
