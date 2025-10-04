@@ -1380,4 +1380,4 @@ async def root():
 
 
 if __name__ == "__main__":
-    asyncio.run(chargerunner())
+    background = asyncio.create_task(chargerunner())
