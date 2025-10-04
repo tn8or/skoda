@@ -50,6 +50,30 @@ All instances of unescaped `month` parameter in HTML contexts have been fixed:
 
 ✅ **Existing Functionality**: The `escape_html()` function was already implemented and working correctly; we just needed to apply it consistently to all user input.
 
+### Code Quality Improvements
+
+**Refactoring Applied**: Created a helper function `build_charge_summary_header(year: int, month: int)` to eliminate code duplication and improve maintainability.
+
+**Benefits**:
+- **DRY Principle**: Eliminated 4 instances of duplicated "Charge Summary for {year}-{month}" string formatting
+- **Consistency**: Single source of truth for header formatting ensures all instances remain consistent
+- **Security**: Centralized escaping logic reduces risk of future XSS vulnerabilities
+- **Maintainability**: Any future changes to the header format only need to be made in one place
+
+**Before** (duplicated across 4 locations):
+```python
+Charge Summary for {escape_html(year)}-{escape_html(f"{month:02d}")}
+```
+
+**After** (centralized helper):
+```python
+def build_charge_summary_header(year: int, month: int) -> str:
+    return f"Charge Summary for {escape_html(year)}-{escape_html(f'{month:02d}')}"
+
+# Used consistently across all templates:
+{build_charge_summary_header(year, month)}
+```
+
 ### Security Impact
 
 - **Before**: Attackers could potentially inject malicious JavaScript by manipulating the `month` parameter
