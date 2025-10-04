@@ -47,14 +47,6 @@ jobs:
       - name: Show Python version
         run: python -V
 
-      - name: Cache pip
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles(format('{0}/requirements.txt', matrix.service)) }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
       - name: Configure PyPI proxy
         run: |
           mkdir -p ~/.config/pip
@@ -62,54 +54,7 @@ jobs:
           echo "index-url = http://pypi.lan:8080/simple/" >> ~/.config/pip/pip.conf
           echo "trusted-host = pypi.lan" >> ~/.config/pip/pip.conf
 
-      - name: Install dependencies (only when tests exist)
-        working-directory: ${{ matrix.service }}
-        run: |
-          if [ -d tests ]; then \
-            if [ -f requirements.txt ]; then pip install -r requirements.txt; fi; \
-          else \
-            echo "No tests in ${{ matrix.service }}, skipping dependency install"; \
-          fi
 
-      - name: Install pytest (if tests exist)
-        working-directory: ${{ matrix.service }}
-        run: |
-          if [ -d tests ]; then pip install pytest pytest-cov pytest-asyncio; fi
-
-      - name: Run tests (if tests exist)
-        working-directory: ${{ matrix.service }}
-        run: |
-          if [ -d tests ]; then pytest -q; else echo "No tests in ${{ matrix.service }}, skipping"; fi
-
-  # Step 2: Security audit
-  audit:
-    runs-on: skoda-runner-set
-    timeout-minutes: 15
-    strategy:
-      max-parallel: 5
-      matrix:
-        service:
-          - skodaimporter
-          - skodachargefinder
-          - skodachargefrontend
-          - skodaupdatechargeprices
-          - skodachargecollector
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-
-      - name: Configure PyPI proxy
-        run: |
-          mkdir -p ~/.config/pip
-          echo "[global]" > ~/.config/pip/pip.conf
-          echo "index-url = http://pypi.lan:8080/simple/" >> ~/.config/pip/pip.conf
-          echo "trusted-host = pypi.lan" >> ~/.config/pip/pip.conf
-          
       - name: Cache pip
         uses: actions/cache@v4
         with:
@@ -143,11 +88,29 @@ jobs:
           path: ${{ matrix.service }}/audit-results.json
           if-no-files-found: ignore
 
-          
+      - name: Install dependencies (only when tests exist)
+        working-directory: ${{ matrix.service }}
+        run: |
+          if [ -d tests ]; then \
+            if [ -f requirements.txt ]; then pip install -r requirements.txt; fi; \
+          else \
+            echo "No tests in ${{ matrix.service }}, skipping dependency install"; \
+          fi
+
+      - name: Install pytest (if tests exist)
+        working-directory: ${{ matrix.service }}
+        run: |
+          if [ -d tests ]; then pip install pytest pytest-cov pytest-asyncio; fi
+
+      - name: Run tests (if tests exist)
+        working-directory: ${{ matrix.service }}
+        run: |
+          if [ -d tests ]; then pytest -q; else echo "No tests in ${{ matrix.service }}, skipping"; fi
+
   # Step 3a: Build test images (for non-main branches and PRs)
   build-test-images:
     if: github.ref != 'refs/heads/main'
-    needs: [test, audit]
+    needs: [test]
     runs-on: skoda-runner-set
     timeout-minutes: 90
     strategy:
@@ -258,7 +221,7 @@ jobs:
   # Step 3b: Build production images (for main branch only)
   build-production-images:
     if: github.ref == 'refs/heads/main'
-    needs: [test, audit]
+    needs: [test]
     runs-on: skoda-runner-set
     timeout-minutes: 90
     strategy:

@@ -26,20 +26,14 @@ def test_loop_logic():
 
 def test_syntax():
     """Test that our chargecollector module compiles correctly"""
-    try:
-        import ast
+    import ast
 
-        with open("chargecollector.py", "r") as f:
-            code = f.read()
-        ast.parse(code)
-        print("✓ Syntax validation passed")
-        return True
-    except SyntaxError as e:
-        print(f"✗ Syntax error: {e}")
-        return False
-    except Exception as e:
-        print(f"✗ Validation error: {e}")
-        return False
+    with open("chargecollector.py", "r", encoding="utf-8") as f:
+        code = f.read()
+
+    # This will raise an exception if there's a syntax error
+    ast.parse(code)
+    print("✓ Syntax validation passed")
 
 
 if __name__ == "__main__":
