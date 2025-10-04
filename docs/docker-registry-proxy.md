@@ -36,7 +36,9 @@ These secrets are optional but recommended to avoid rate limiting issues. When c
 ### Registry Proxy Settings
 
 - **Proxy URL**: `http://dockerproxy.lan:80`
-- **Insecure Registry**: `dockerproxy.lan:80`
+- **Insecure Registries**: 
+  - `dockerproxy.lan:80` (Docker registry proxy)
+  - `local-registry.default.svc.cluster.local:5000` (Local buildx cache registry)
 
 The configuration is stored in `.github/docker-daemon.json`:
 
@@ -46,10 +48,21 @@ The configuration is stored in `.github/docker-daemon.json`:
     "http://dockerproxy.lan:80"
   ],
   "insecure-registries": [
-    "dockerproxy.lan:80"
+    "dockerproxy.lan:80",
+    "local-registry.default.svc.cluster.local:5000"
   ]
 }
 ```
+
+### Buildx Cache Configuration
+
+Docker buildx is configured to use a local registry for caching build layers:
+
+- **Cache Registry**: `local-registry.default.svc.cluster.local:5000`
+- **Cache Type**: `registry`
+- **Cache Reference**: `local-registry.default.svc.cluster.local:5000/buildcache:<image-name>`
+
+This configuration keeps build cache files local to the cluster, improving build performance and reducing external dependencies.
 
 ## Automatic Configuration
 
@@ -71,6 +84,13 @@ Each Docker workflow includes steps that:
 3. Copy the registry proxy configuration
 4. Restart the Docker daemon to apply configurations
 5. Wait for services to be ready
+6. Configure Docker buildx with the local registry cache support
+
+The buildx configuration includes:
+- Registry-specific settings for the local cache registry (`local-registry.default.svc.cluster.local:5000`)
+- HTTP and insecure flags enabled for the local registry
+- Cache type set to `registry` instead of GitHub Actions cache
+- Unique cache references per image to prevent conflicts
 
 ### Container Specifications for Kubernetes Mode
 

@@ -172,6 +172,10 @@ jobs:
           platforms: linux/amd64,linux/arm64
           driver-opts: |
             env.BUILDKIT_STEP_LOG_MAX_SIZE=50000000
+          config-inline: |
+            [registry."local-registry.default.svc.cluster.local:5000"]
+              http = true
+              insecure = true
 
       - name: Log in to the Container registry
         uses: docker/login-action@v3
@@ -214,9 +218,9 @@ jobs:
             GIT_TAG=${{ steps.buildargs.outputs.git_tag }}
             BUILD_DATE=${{ steps.buildargs.outputs.build_date }}
           cache-from: |
-            type=gha
+            type=registry,ref=local-registry.default.svc.cluster.local:5000/buildcache:${{ matrix.image }}
           cache-to: |
-            type=gha,mode=max
+            type=registry,ref=local-registry.default.svc.cluster.local:5000/buildcache:${{ matrix.image }},mode=max
 
   # Step 3b: Build production images (for main branch only)
   build-production-images:
@@ -282,6 +286,10 @@ jobs:
           platforms: linux/amd64,linux/arm64
           driver-opts: |
             env.BUILDKIT_STEP_LOG_MAX_SIZE=50000000
+          config-inline: |
+            [registry."local-registry.default.svc.cluster.local:5000"]
+              http = true
+              insecure = true
 
       - name: Log in to the Container registry
         uses: docker/login-action@v3
@@ -325,9 +333,9 @@ jobs:
             GIT_TAG=${{ steps.buildargs.outputs.git_tag }}
             BUILD_DATE=${{ steps.buildargs.outputs.build_date }}
           cache-from: |
-            type=gha
+            type=registry,ref=local-registry.default.svc.cluster.local:5000/buildcache:${{ matrix.image }}
           cache-to: |
-            type=gha,mode=max
+            type=registry,ref=local-registry.default.svc.cluster.local:5000/buildcache:${{ matrix.image }},mode=max
 
   # Step 4a: Notify test webhook (after test builds)
   notify-test-webhook:

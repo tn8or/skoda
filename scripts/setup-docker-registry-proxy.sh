@@ -7,6 +7,7 @@ set -e
 DOCKER_DAEMON_DIR="/etc/docker"
 DOCKER_DAEMON_JSON="$DOCKER_DAEMON_DIR/daemon.json"
 REGISTRY_PROXY="dockerproxy.lan:80"
+LOCAL_REGISTRY="local-registry.default.svc.cluster.local:5000"
 
 echo "Setting up Docker registry proxy configuration..."
 
@@ -28,13 +29,15 @@ fi
 
 # Create the daemon.json with registry proxy configuration
 echo "Configuring Docker daemon with registry proxy: $REGISTRY_PROXY"
+echo "Configuring Docker daemon with local registry cache: $LOCAL_REGISTRY"
 cat > "$DOCKER_DAEMON_JSON" << EOF
 {
   "registry-mirrors": [
     "http://$REGISTRY_PROXY"
   ],
   "insecure-registries": [
-    "$REGISTRY_PROXY"
+    "$REGISTRY_PROXY",
+    "$LOCAL_REGISTRY"
   ]
 }
 EOF
@@ -53,7 +56,7 @@ sleep 5
 if systemctl is-active --quiet docker; then
     echo "✅ Docker daemon is running with registry proxy configuration"
     echo "Registry mirror: http://$REGISTRY_PROXY"
-    echo "Insecure registry: $REGISTRY_PROXY"
+    echo "Insecure registries: $REGISTRY_PROXY, $LOCAL_REGISTRY"
 else
     echo "❌ Docker daemon failed to start. Check the configuration."
     exit 1
