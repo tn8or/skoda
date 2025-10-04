@@ -172,7 +172,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           driver-opts: |
             env.BUILDKIT_STEP_LOG_MAX_SIZE=50000000
-          config-inline: |
+          buildkitd-config-inline: |
             [registry."local-registry.default.svc.cluster.local:5000"]
               http = true
               insecure = true
@@ -289,7 +289,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           driver-opts: |
             env.BUILDKIT_STEP_LOG_MAX_SIZE=50000000
-          config-inline: |
+          buildkitd-config-inline: |
             [registry."local-registry.default.svc.cluster.local:5000"]
               http = true
               insecure = true
