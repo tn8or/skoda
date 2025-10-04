@@ -8,7 +8,7 @@ import time
 from zoneinfo import ZoneInfo
 
 from fastapi import BackgroundTasks, FastAPI, Query, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from helpers import (
     compute_daily_totals_home,
     compute_session_summary,
@@ -39,16 +39,30 @@ async def ordinal(n):
 def escape_html(value):
     """
     Escape HTML content to prevent XSS attacks.
-    
+
     Args:
         value: The value to escape. Can be string, int, float, or None.
-        
+
     Returns:
         str: HTML-escaped string representation of the value.
     """
     if value is None:
         return ""
     return html.escape(str(value))
+
+
+def build_charge_summary_header(year: int, month: int) -> str:
+    """
+    Build a properly escaped charge summary header string.
+
+    Args:
+        year: The year (already validated by FastAPI)
+        month: The month (already validated by FastAPI)
+
+    Returns:
+        str: HTML-safe formatted string "Charge Summary for YYYY-MM"
+    """
+    return f"Charge Summary for {escape_html(year)}-{escape_html(f'{month:02d}')}"
 
 
 app = FastAPI()
@@ -148,7 +162,7 @@ async def root(
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Charge Summary for {escape_html(year)}-{month:02d}</title>
+            <title>{build_charge_summary_header(year, month)}</title>
             <link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
         </head>
         <body class="bg-black">
@@ -156,7 +170,7 @@ async def root(
                 <div class="container px-5 py-12 mx-auto lg:px-20">
                     <div class="flex flex-col flex-wrap pb-6 mb-12 text-white">
                         <h1 class="mb-12 text-3xl font-medium text-white">
-                            Charge Summary for {escape_html(year)}-{month:02d}
+                            {build_charge_summary_header(year, month)}
                         </h1>
                         <p class="text-white text-xl">No charge data found for this month.</p>
                     </div>
@@ -187,7 +201,7 @@ async def root(
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Charge Summary for {escape_html(year)}-{escape_html(f"{month:02d}")}</title>
+        <title>{build_charge_summary_header(year, month)}</title>
         <link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
         <style>
             .divTable {{
@@ -226,7 +240,7 @@ async def root(
             <div class="container px-5 py-12 mx-auto lg:px-20">
                 <div class="flex flex-col flex-wrap text-white">
                     <h1 class="mb-12 text-3xl font-medium text-white">
-                        Charge Summary for {escape_html(year)}-{month:02d}
+                        {build_charge_summary_header(year, month)}
                     </h1>
                 </div>
                 <!-- Daily totals table -->
@@ -468,5 +482,7 @@ async def latest_rawlog_age(threshold_seconds: int | None = Query(default=None, 
         "latest_timestamp": ts.isoformat(),
         "age_seconds": age_seconds,
         "threshold_seconds": threshold_seconds,
-        "within_threshold": None if threshold_seconds is None else age_seconds <= threshold_seconds,
+        "within_threshold": (
+            None if threshold_seconds is None else age_seconds <= threshold_seconds
+        ),
     }
