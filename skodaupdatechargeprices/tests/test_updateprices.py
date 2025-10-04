@@ -87,16 +87,123 @@ async def test_fetch_transport_tariff_from_api_fallback_on_failure(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_fetch_spot_price_parses_response():
+async def test_fetch_spot_price_new_api():
+    """Test the new DayAheadPrices API for dates >= 2025-10-01"""
     fake_data = {"records": [{"DayAheadPriceDKK": 1000.0}]}
     with patch("skodaupdatechargeprices.httpx.AsyncClient") as C:
         client = C.return_value.__aenter__.return_value
         client.get = AsyncMock()
         client.get.return_value.json.return_value = fake_data
         client.get.return_value.raise_for_status.return_value = None
-        price = await m.fetch_spot_price(dt.datetime(2025, 6, 3, 12, 0, 0))
+
+        # Test date after cutover (should use new API)
+        price = await m.fetch_spot_price(dt.datetime(2025, 10, 5, 12, 0, 0))
+
+        # Verify it called the API with DayAheadPrices endpoint
+        client.get.assert_called_once()
+        call_args = client.get.call_args[0][0]
+        assert "DayAheadPrices" in call_args
+        assert "2025-10-05T12:00:00" in call_args
+
     # 1000 DKK/MWh -> 1.0 DKK/kWh
     assert pytest.approx(price, 0.0001) == 1.0
+
+
+@pytest.mark.asyncio
+async def test_fetch_spot_price_legacy_api():
+    """Test the legacy Elspotprices API for dates < 2025-10-01"""
+    fake_data = {"records": [{"SpotPriceEUR": 100.0}]}
+    with patch("skodaupdatechargeprices.httpx.AsyncClient") as C:
+        client = C.return_value.__aenter__.return_value
+        client.get = AsyncMock()
+        client.get.return_value.json.return_value = fake_data
+        client.get.return_value.raise_for_status.return_value = None
+
+        # Test date before cutover (should use legacy API)
+        price = await m.fetch_spot_price(dt.datetime(2025, 9, 15, 12, 0, 0))
+
+        # Verify it called the API with Elspotprices endpoint
+        client.get.assert_called_once()
+        call_args = client.get.call_args[0][0]
+        assert "Elspotprices" in call_args
+        assert "2025-09-15T12:00Z" in call_args
+
+    # 100 EUR/MWh * 7.45 / 1000 = 0.745 DKK/kWh
+    assert pytest.approx(price, 0.0001) == 0.745
+
+
+@pytest.mark.asyncio
+async def test_fetch_spot_price_api_selection():
+    """Test that the correct API is selected based on date"""
+    # Mock both APIs
+    with patch("skodaupdatechargeprices.fetch_spot_price_legacy") as mock_legacy, patch(
+        "skodaupdatechargeprices.fetch_spot_price_new"
+    ) as mock_new:
+
+        mock_legacy.return_value = 0.5
+        mock_new.return_value = 0.6
+
+        # Test date before cutover
+        result1 = await m.fetch_spot_price(dt.datetime(2025, 9, 30, 12, 0, 0))
+        mock_legacy.assert_called_once()
+        mock_new.assert_not_called()
+        assert result1 == 0.5
+
+        # Reset mocks
+        mock_legacy.reset_mock()
+        mock_new.reset_mock()
+
+        # Test date after cutover
+        result2 = await m.fetch_spot_price(dt.datetime(2025, 10, 1, 12, 0, 0))
+        mock_new.assert_called_once()
+        mock_legacy.assert_not_called()
+        assert result2 == 0.6
+
+
+@pytest.mark.asyncio
+async def test_fetch_spot_price_fallback_mechanism():
+    """Test that fallback works when primary API fails"""
+    # Test legacy API failure, fallback to new API
+    with patch("skodaupdatechargeprices.fetch_spot_price_legacy") as mock_legacy, patch(
+        "skodaupdatechargeprices.fetch_spot_price_new"
+    ) as mock_new:
+
+        mock_legacy.side_effect = Exception("Legacy API failed")
+        mock_new.return_value = 0.8
+
+        result = await m.fetch_spot_price(dt.datetime(2025, 9, 15, 12, 0, 0))
+        mock_legacy.assert_called_once()
+        mock_new.assert_called_once()  # Called as fallback
+        assert result == 0.8
+
+    # Test new API failure, fallback to legacy API (separate mock context)
+    with patch(
+        "skodaupdatechargeprices.fetch_spot_price_legacy"
+    ) as mock_legacy2, patch(
+        "skodaupdatechargeprices.fetch_spot_price_new"
+    ) as mock_new2:
+
+        mock_new2.side_effect = Exception("New API failed")
+        mock_legacy2.return_value = 0.7
+
+        result = await m.fetch_spot_price(dt.datetime(2025, 10, 5, 12, 0, 0))
+        mock_new2.assert_called_once()
+        mock_legacy2.assert_called_once()  # Called as fallback
+        assert result == 0.7
+
+
+@pytest.mark.asyncio
+async def test_fetch_spot_price_both_apis_fail():
+    """Test that appropriate error is raised when both APIs fail"""
+    with patch("skodaupdatechargeprices.fetch_spot_price_legacy") as mock_legacy, patch(
+        "skodaupdatechargeprices.fetch_spot_price_new"
+    ) as mock_new:
+
+        mock_legacy.side_effect = Exception("Legacy failed")
+        mock_new.side_effect = Exception("New failed")
+
+        with pytest.raises(ValueError, match="Both APIs failed"):
+            await m.fetch_spot_price(dt.datetime(2025, 9, 15, 12, 0, 0))
 
 
 @pytest.mark.asyncio

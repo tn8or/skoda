@@ -228,7 +228,39 @@ async def get_transport_tariff(dt: datetime.datetime) -> float:
         return await get_transport_tariff_fallback(dt)
 
 
-async def fetch_spot_price(dt: datetime.datetime) -> float:
+async def fetch_spot_price_legacy(dt: datetime.datetime) -> float:
+    """
+    Fetch spot price from the legacy Elspotprices API for dates before 2025-10-01.
+    Uses EUR prices with conversion to DKK.
+    """
+    hour_utc = dt.strftime("%Y-%m-%dT%H:00Z")
+    url = (
+        "https://api.energidataservice.dk/dataset/Elspotprices"
+        "?offset=0&limit=1&sort=HourUTC%%20DESC"
+        '&filter={"PriceArea":"DK2","HourUTC":"%s"}' % hour_utc
+    )
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(url)
+        # Support tests that mock these as async coroutines
+        res = resp.raise_for_status()
+        if asyncio.iscoroutine(res):
+            await res
+        data = resp.json()
+        if asyncio.iscoroutine(data):
+            data = await data
+    if data["records"]:
+        eur_per_mwh = data["records"][0]["SpotPriceEUR"]
+        dkk_per_kwh = eur_per_mwh * 7.45 / 1000
+        return dkk_per_kwh
+    else:
+        raise ValueError("No legacy spot price found for %s" % hour_utc)
+
+
+async def fetch_spot_price_new(dt: datetime.datetime) -> float:
+    """
+    Fetch spot price from the new DayAheadPrices API for dates from 2025-10-01 onwards.
+    Uses native DKK prices.
+    """
     hour_utc = dt.strftime("%Y-%m-%dT%H:00:00")
     url = (
         "https://api.energidataservice.dk/dataset/DayAheadPrices"
@@ -249,7 +281,40 @@ async def fetch_spot_price(dt: datetime.datetime) -> float:
         dkk_per_kwh = dkk_per_mwh / 1000
         return dkk_per_kwh
     else:
-        raise ValueError("No spot price found for %s" % hour_utc)
+        raise ValueError("No new spot price found for %s" % hour_utc)
+
+
+async def fetch_spot_price(dt: datetime.datetime) -> float:
+    """
+    Fetch spot price using appropriate API based on date.
+
+    - For dates before 2025-10-01: Use legacy Elspotprices API
+    - For dates from 2025-10-01 onwards: Use new DayAheadPrices API
+
+    Returns price in DKK/kWh.
+    """
+    # API cutover date: October 1, 2025
+    cutover_date = datetime.datetime(2025, 10, 1)
+
+    try:
+        if dt < cutover_date:
+            my_logger.debug("Using legacy Elspotprices API for date: %s", dt)
+            return await fetch_spot_price_legacy(dt)
+        else:
+            my_logger.debug("Using new DayAheadPrices API for date: %s", dt)
+            return await fetch_spot_price_new(dt)
+    except Exception as e:
+        # If the primary API fails, try the other one as fallback
+        my_logger.warning("Primary API failed for %s, trying fallback: %s", dt, e)
+        try:
+            if dt < cutover_date:
+                return await fetch_spot_price_new(dt)
+            else:
+                return await fetch_spot_price_legacy(dt)
+        except Exception as fallback_e:
+            raise ValueError(
+                f"Both APIs failed for {dt}: primary={e}, fallback={fallback_e}"
+            )
 
 
 async def update_one_charge_price():
