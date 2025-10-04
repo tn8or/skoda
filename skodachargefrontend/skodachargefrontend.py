@@ -148,7 +148,7 @@ async def root(
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Charge Summary for {escape_html(year)}-{month:02d}</title>
+            <title>Charge Summary for {escape_html(year)}-{escape_html(f"{month:02d}")}</title>
             <link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
         </head>
         <body class="bg-black">
@@ -156,7 +156,7 @@ async def root(
                 <div class="container px-5 py-12 mx-auto lg:px-20">
                     <div class="flex flex-col flex-wrap pb-6 mb-12 text-white">
                         <h1 class="mb-12 text-3xl font-medium text-white">
-                            Charge Summary for {escape_html(year)}-{month:02d}
+                            Charge Summary for {escape_html(year)}-{escape_html(f"{month:02d}")}
                         </h1>
                         <p class="text-white text-xl">No charge data found for this month.</p>
                     </div>
@@ -226,7 +226,7 @@ async def root(
             <div class="container px-5 py-12 mx-auto lg:px-20">
                 <div class="flex flex-col flex-wrap text-white">
                     <h1 class="mb-12 text-3xl font-medium text-white">
-                        Charge Summary for {escape_html(year)}-{month:02d}
+                        Charge Summary for {escape_html(year)}-{escape_html(f"{month:02d}")}
                     </h1>
                 </div>
                 <!-- Daily totals table -->
