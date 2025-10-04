@@ -14,10 +14,10 @@ from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-import mariadb
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 
+import mariadb
 from commons import (
     SLEEPTIME,
     UPDATEALLCHARGES_URL,

@@ -23,9 +23,13 @@ if [ $1 = "up" ]; then
 # Configure Docker registry proxy if requested
 configure_docker_proxy
 
+echo "Docker proxy configured"
 source .venv/bin/activate
-pytest -q
+echo "Virtual environment activated"
 folders="skodaimporter skodachargefinder skodachargecollector skodaupdatechargeprices skodachargefrontend"
+for folder in ${folders}; do
+    cd ${folder} && pytest --maxfail=1 && cd ..
+done
 echo ${folders} | xargs -P 8 -t -n 1 -I {} sh -c 'pip-compile --upgrade --output-file={}/requirements.txt {}/requirements.in'
 echo compiled requirements
 GIT_COMMIT=$(git rev-parse HEAD || true)

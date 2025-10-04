@@ -9,6 +9,7 @@ from pathlib import Path
 
 EXPECTED_REGISTRY_PROXY = "dockerproxy.lan:80"
 EXPECTED_REGISTRY_MIRROR = f"http://{EXPECTED_REGISTRY_PROXY}"
+EXPECTED_LOCAL_REGISTRY = "local-registry.default.svc.cluster.local:5000"
 
 
 def test_docker_daemon_config():
@@ -40,9 +41,14 @@ def test_docker_daemon_config():
         print(f"   Found: {insecure_registries}")
         return False
     
+    if EXPECTED_LOCAL_REGISTRY not in insecure_registries:
+        print(f"❌ Local registry not found in insecure registries: {EXPECTED_LOCAL_REGISTRY}")
+        print(f"   Found: {insecure_registries}")
+        return False
+    
     print("✅ Docker daemon configuration is valid")
     print(f"   Registry mirror: {EXPECTED_REGISTRY_MIRROR}")
-    print(f"   Insecure registry: {EXPECTED_REGISTRY_PROXY}")
+    print(f"   Insecure registries: {EXPECTED_REGISTRY_PROXY}, {EXPECTED_LOCAL_REGISTRY}")
     return True
 
 

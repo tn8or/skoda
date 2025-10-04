@@ -3,6 +3,7 @@
     "http://dockerproxy.lan:80"
   ],
   "insecure-registries": [
-    "dockerproxy.lan:80"
+    "dockerproxy.lan:80",
+    "local-registry.default.svc.cluster.local:5000"
   ]
 }
