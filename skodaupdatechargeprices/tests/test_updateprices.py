@@ -7,16 +7,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# Load the module directly from the .py file
-spec = importlib.util.spec_from_file_location(
-    "skodaupdatechargeprices",
-    os.path.join(
-        os.path.dirname(os.path.dirname(__file__)), "skodaupdatechargeprices.py"
-    ),
-)
-m = importlib.util.module_from_spec(spec)
-sys.modules["skodaupdatechargeprices"] = m
-spec.loader.exec_module(m)
+# Ensure parent directory is in sys.path for import to work
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+import skodaupdatechargeprices as m
 
 
 @pytest.mark.asyncio
