@@ -14,10 +14,10 @@ from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-import mariadb
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 
+import mariadb
 from commons import (
     SLEEPTIME,
     UPDATEALLCHARGES_URL,
@@ -1380,4 +1380,4 @@ async def root():
 
 
 if __name__ == "__main__":
-    background = asyncio.create_task(chargerunner())
+    asyncio.run(chargerunner())

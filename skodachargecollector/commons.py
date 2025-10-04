@@ -85,8 +85,6 @@ async def db_connect(my_logger):
 def get_logger(name):
     import logging
 
-    import graypy
-
     env = load_secret("env")
     graylog_host = load_secret("GRAYLOG_HOST")
     graylog_port = load_secret("GRAYLOG_PORT")
@@ -96,12 +94,29 @@ def get_logger(name):
     file_handler.setLevel(logging.DEBUG)
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.DEBUG)
-    graylog_handler = graypy.GELFTCPHandler(graylog_host, graylog_port)
     formatter = logging.Formatter("%(name)s - %(funcName)s - %(lineno)d - %(message)s")
     file_handler.setFormatter(formatter)
     console_handler.setFormatter(formatter)
-    graylog_handler.setFormatter(formatter)
     my_logger.addHandler(file_handler)
     my_logger.addHandler(console_handler)
-    my_logger.addHandler(graylog_handler)
+
+    # Only add Graylog handler if not in test mode and connection is possible
+    try:
+        import os
+
+        if (
+            os.getenv("PYTEST_CURRENT_TEST") is None
+            and graylog_host
+            and graylog_port
+            and graylog_host != "localhost"
+        ):  # Skip localhost in tests
+            import graypy
+
+            graylog_handler = graypy.GELFTCPHandler(graylog_host, int(graylog_port))
+            graylog_handler.setFormatter(formatter)
+            my_logger.addHandler(graylog_handler)
+    except Exception:
+        # Silently skip Graylog handler if it fails - don't let logging issues block the app
+        pass
+
     return my_logger

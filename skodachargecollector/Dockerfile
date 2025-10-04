@@ -44,9 +44,16 @@ RUN if [ ! -d "tests" ]; then \
     echo "ERROR: tests directory not found!" && exit 1; \
     fi
 
-# Run tests with memory-optimized settings
+# Run tests with memory-optimized settings and environment variables
 RUN echo "Running tests with coverage requirements..." && \
     . /opt/venv/bin/activate && \
+    env=test \
+    GRAYLOG_HOST=localhost \
+    GRAYLOG_PORT=12201 \
+    MARIADB_USERNAME=test \
+    MARIADB_PASSWORD=test \
+    MARIADB_HOSTNAME=localhost \
+    MARIADB_DATABASE=test \
     python -m pytest tests/ \
     -v \
     --tb=short \
