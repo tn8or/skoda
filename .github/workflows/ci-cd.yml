@@ -202,6 +202,9 @@ jobs:
           TAG=$(git describe --tags --always --dirty || echo)
           echo "git_tag=${TAG}" >> $GITHUB_OUTPUT
           echo "build_date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+          # Extract service name from context path for cache key
+          SERVICE_NAME=$(basename ${{ matrix.context-path }})
+          echo "service_name=${SERVICE_NAME}" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker test image
         if: github.actor != 'dependabot[bot]'
@@ -218,9 +221,9 @@ jobs:
             GIT_TAG=${{ steps.buildargs.outputs.git_tag }}
             BUILD_DATE=${{ steps.buildargs.outputs.build_date }}
           cache-from: |
-            type=registry,ref=local-registry.default.svc.cluster.local:5000/buildcache:${{ matrix.image }}
+            type=registry,ref=local-registry.default.svc.cluster.local:5000/buildcache/${{ steps.buildargs.outputs.service_name }}:latest
           cache-to: |
-            type=registry,ref=local-registry.default.svc.cluster.local:5000/buildcache:${{ matrix.image }},mode=max
+            type=registry,ref=local-registry.default.svc.cluster.local:5000/buildcache/${{ steps.buildargs.outputs.service_name }}:latest,mode=max
 
   # Step 3b: Build production images (for main branch only)
   build-production-images:
@@ -317,6 +320,9 @@ jobs:
           TAG=$(git describe --tags --always --dirty || echo)
           echo "git_tag=${TAG}" >> $GITHUB_OUTPUT
           echo "build_date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+          # Extract service name from context path for cache key
+          SERVICE_NAME=$(basename ${{ matrix.context-path }})
+          echo "service_name=${SERVICE_NAME}" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker production image
         if: github.actor != 'dependabot[bot]'
@@ -333,9 +339,9 @@ jobs:
             GIT_TAG=${{ steps.buildargs.outputs.git_tag }}
             BUILD_DATE=${{ steps.buildargs.outputs.build_date }}
           cache-from: |
-            type=registry,ref=local-registry.default.svc.cluster.local:5000/buildcache:${{ matrix.image }}
+            type=registry,ref=local-registry.default.svc.cluster.local:5000/buildcache/${{ steps.buildargs.outputs.service_name }}:latest
           cache-to: |
-            type=registry,ref=local-registry.default.svc.cluster.local:5000/buildcache:${{ matrix.image }},mode=max
+            type=registry,ref=local-registry.default.svc.cluster.local:5000/buildcache/${{ steps.buildargs.outputs.service_name }}:latest,mode=max
 
   # Step 4a: Notify test webhook (after test builds)
   notify-test-webhook:

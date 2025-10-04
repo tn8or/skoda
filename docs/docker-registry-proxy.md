@@ -60,9 +60,9 @@ Docker buildx is configured to use a local registry for caching build layers:
 
 - **Cache Registry**: `local-registry.default.svc.cluster.local:5000`
 - **Cache Type**: `registry`
-- **Cache Reference**: `local-registry.default.svc.cluster.local:5000/buildcache:<image-name>`
+- **Cache Reference**: `local-registry.default.svc.cluster.local:5000/buildcache/<service-name>:latest`
 
-This configuration keeps build cache files local to the cluster, improving build performance and reducing external dependencies.
+The cache reference uses the service name (extracted from the context path) to create unique cache keys for each service (e.g., `skodaimporter`, `skodachargefinder`, etc.). This configuration keeps build cache files local to the cluster, improving build performance and reducing external dependencies.
 
 ## Automatic Configuration
 
