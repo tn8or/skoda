@@ -23,6 +23,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Ensure cache directory exists
+        run: |
+          sudo mkdir -p /home/runner/_cache/pip
+          sudo chown -R $USER:$USER /home/runner/_cache
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -31,7 +36,7 @@ jobs:
       - name: Cache pip
         uses: actions/cache@v4
         with:
-          path: ~/.cache/pip
+          path: /home/runner/_cache/pip
           key: ${{ runner.os }}-pip-deps-${{ hashFiles('**/requirements.in') }}
           restore-keys: |
             ${{ runner.os }}-pip-deps-
@@ -43,11 +48,15 @@ jobs:
           echo "[global]" > ~/.config/pip/pip.conf
           echo "index-url = http://pypi.lan:8080/simple/" >> ~/.config/pip/pip.conf
           echo "trusted-host = pypi.lan" >> ~/.config/pip/pip.conf
+        env:
+          PIP_CACHE_DIR: /home/runner/_cache/pip
 
       - name: Install pip-tools
         run: |
           python -m pip install --upgrade pip
           pip install pip-tools
+        env:
+          PIP_CACHE_DIR: /home/runner/_cache/pip
 
       - name: Compile requirements with pip-compile
         run: |
@@ -59,6 +68,8 @@ jobs:
               (cd "$d" && pip-compile --upgrade --no-emit-index-url --no-emit-trusted-host -o requirements.txt requirements.in)
             fi
           done
+        env:
+          PIP_CACHE_DIR: /home/runner/_cache/pip
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v7
