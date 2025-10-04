@@ -8,7 +8,7 @@ import time
 from zoneinfo import ZoneInfo
 
 from fastapi import BackgroundTasks, FastAPI, Query, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from helpers import (
     compute_daily_totals_home,
     compute_session_summary,
@@ -54,11 +54,11 @@ def escape_html(value):
 def build_charge_summary_header(year: int, month: int) -> str:
     """
     Build a properly escaped charge summary header string.
-    
+
     Args:
         year: The year (already validated by FastAPI)
         month: The month (already validated by FastAPI)
-        
+
     Returns:
         str: HTML-safe formatted string "Charge Summary for YYYY-MM"
     """
@@ -482,5 +482,7 @@ async def latest_rawlog_age(threshold_seconds: int | None = Query(default=None, 
         "latest_timestamp": ts.isoformat(),
         "age_seconds": age_seconds,
         "threshold_seconds": threshold_seconds,
-        "within_threshold": None if threshold_seconds is None else age_seconds <= threshold_seconds,
+        "within_threshold": (
+            None if threshold_seconds is None else age_seconds <= threshold_seconds
+        ),
     }
