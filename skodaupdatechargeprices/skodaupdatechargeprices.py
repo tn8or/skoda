@@ -126,43 +126,47 @@ async def fetch_transport_tariff_from_api(dt: datetime.datetime) -> float:
     """
     Attempt to fetch transport tariff from energidataservice.dk DatahubPricelist API
     for Cerius A/S Nettarif C.
-    
+
     Returns the tariff rate in DKK/kWh, or raises an exception if not found.
     """
     # Format the datetime for API query
     date_str = dt.strftime("%Y-%m-%d")
     hour = dt.hour
-    
+
     # Try to find the Cerius A/S Nettarif C tariff
     url = (
         "https://api.energidataservice.dk/dataset/DatahubPricelist"
-        "?filter={\"ChargeOwner\":\"Cerius A/S\",\"ChargeType\":\"D03\"}"
+        '?filter={"ChargeOwner":"Cerius A/S","ChargeType":"D03"}'
         "&sort=ValidFrom DESC&limit=50"
     )
-    
+
     async with httpx.AsyncClient() as client:
         resp = await client.get(url)
         resp.raise_for_status()
         data = resp.json()
-    
-    # Look for current Nettarif C tariff (this is a placeholder - the exact 
+
+    # Look for current Nettarif C tariff (this is a placeholder - the exact
     # charge code may need to be updated when the API includes C-level tariffs)
     for record in data["records"]:
         code = record.get("ChargeTypeCode", "")
         note = record.get("Note", "").lower()
         valid_from = record.get("ValidFrom", "")
         valid_to = record.get("ValidTo")
-        
+
         # Check if this is a C-level consumption tariff and currently valid
-        if ("c" in note and "nettarif" in note and "indfödning" not in note and 
-            date_str >= valid_from[:10] and 
-            (valid_to is None or date_str <= valid_to[:10])):
-            
+        if (
+            "c" in note
+            and "nettarif" in note
+            and "indfödning" not in note
+            and date_str >= valid_from[:10]
+            and (valid_to is None or date_str <= valid_to[:10])
+        ):
+
             # Extract hourly price (Price1-Price24, where Price1 = hour 0)
             price_key = f"Price{hour + 1}"
             if price_key in record and record[price_key]:
                 return record[price_key] / 1000  # Convert from øre/kWh to DKK/kWh
-    
+
     # If no API data found, raise exception to trigger fallback
     raise ValueError("Transport tariff not available from API")
 
@@ -170,16 +174,16 @@ async def fetch_transport_tariff_from_api(dt: datetime.datetime) -> float:
 async def get_transport_tariff_fallback(dt: datetime.datetime) -> float:
     """
     Fallback transport tariff calculation using current Cerius A/S Nettarif C rates.
-    
+
     Source: https://stromligning.dk/tariffer/cerius_c
     Last verified: October 2025
-    
+
     Winter rates (October-March):
     - 00:00-06:00: 13.31 øre/kWh = 0.1331 DKK/kWh
-    - 06:00-17:00: 39.92 øre/kWh = 0.3992 DKK/kWh  
+    - 06:00-17:00: 39.92 øre/kWh = 0.3992 DKK/kWh
     - 17:00-21:00: 119.77 øre/kWh = 1.1977 DKK/kWh
     - 21:00-00:00: 39.92 øre/kWh = 0.3992 DKK/kWh
-    
+
     Summer rates (April-September):
     - 00:00-06:00: 13.31 øre/kWh = 0.1331 DKK/kWh
     - 06:00-17:00: 19.96 øre/kWh = 0.1996 DKK/kWh
@@ -188,7 +192,7 @@ async def get_transport_tariff_fallback(dt: datetime.datetime) -> float:
     """
     month = dt.month
     hour = dt.hour
-    
+
     if 4 <= month <= 9:  # April to September: summer
         if 0 <= hour < 6:
             return 0.1331
@@ -212,7 +216,7 @@ async def get_transport_tariff_fallback(dt: datetime.datetime) -> float:
 async def get_transport_tariff(dt: datetime.datetime) -> float:
     """
     Get transport tariff for the given datetime, preferring API data with fallback.
-    
+
     Returns the tariff rate in DKK/kWh.
     """
     try:

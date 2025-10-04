@@ -33,7 +33,7 @@ def test_syntax():
     test_dir = os.path.dirname(os.path.abspath(__file__))
     # The chargecollector.py file is in the same directory as this test
     chargecollector_path = os.path.join(test_dir, "chargecollector.py")
-    
+
     with open(chargecollector_path, "r", encoding="utf-8") as f:
         code = f.read()
 

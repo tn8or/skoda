@@ -29,28 +29,52 @@ async def test_get_transport_tariff_winter_peakhours():
 @pytest.mark.asyncio
 async def test_get_transport_tariff_fallback_values():
     # Test that fallback values match expected Cerius A/S Nettarif C rates
-    
+
     # Winter rates
     winter_night = dt.datetime(2025, 1, 10, 3, 0, 0)  # 03:00 winter
-    winter_day = dt.datetime(2025, 1, 10, 12, 0, 0)   # 12:00 winter  
+    winter_day = dt.datetime(2025, 1, 10, 12, 0, 0)  # 12:00 winter
     winter_peak = dt.datetime(2025, 1, 10, 18, 0, 0)  # 18:00 winter
-    winter_evening = dt.datetime(2025, 1, 10, 22, 0, 0) # 22:00 winter
-    
-    assert pytest.approx(await m.get_transport_tariff_fallback(winter_night), 0.0001) == 0.1331
-    assert pytest.approx(await m.get_transport_tariff_fallback(winter_day), 0.0001) == 0.3992
-    assert pytest.approx(await m.get_transport_tariff_fallback(winter_peak), 0.0001) == 1.1977
-    assert pytest.approx(await m.get_transport_tariff_fallback(winter_evening), 0.0001) == 0.3992
-    
+    winter_evening = dt.datetime(2025, 1, 10, 22, 0, 0)  # 22:00 winter
+
+    assert (
+        pytest.approx(await m.get_transport_tariff_fallback(winter_night), 0.0001)
+        == 0.1331
+    )
+    assert (
+        pytest.approx(await m.get_transport_tariff_fallback(winter_day), 0.0001)
+        == 0.3992
+    )
+    assert (
+        pytest.approx(await m.get_transport_tariff_fallback(winter_peak), 0.0001)
+        == 1.1977
+    )
+    assert (
+        pytest.approx(await m.get_transport_tariff_fallback(winter_evening), 0.0001)
+        == 0.3992
+    )
+
     # Summer rates
-    summer_night = dt.datetime(2025, 6, 10, 3, 0, 0)   # 03:00 summer
-    summer_day = dt.datetime(2025, 6, 10, 12, 0, 0)    # 12:00 summer
-    summer_peak = dt.datetime(2025, 6, 10, 18, 0, 0)   # 18:00 summer
-    summer_evening = dt.datetime(2025, 6, 10, 22, 0, 0) # 22:00 summer
-    
-    assert pytest.approx(await m.get_transport_tariff_fallback(summer_night), 0.0001) == 0.1331
-    assert pytest.approx(await m.get_transport_tariff_fallback(summer_day), 0.0001) == 0.1996
-    assert pytest.approx(await m.get_transport_tariff_fallback(summer_peak), 0.0001) == 0.5190
-    assert pytest.approx(await m.get_transport_tariff_fallback(summer_evening), 0.0001) == 0.1996
+    summer_night = dt.datetime(2025, 6, 10, 3, 0, 0)  # 03:00 summer
+    summer_day = dt.datetime(2025, 6, 10, 12, 0, 0)  # 12:00 summer
+    summer_peak = dt.datetime(2025, 6, 10, 18, 0, 0)  # 18:00 summer
+    summer_evening = dt.datetime(2025, 6, 10, 22, 0, 0)  # 22:00 summer
+
+    assert (
+        pytest.approx(await m.get_transport_tariff_fallback(summer_night), 0.0001)
+        == 0.1331
+    )
+    assert (
+        pytest.approx(await m.get_transport_tariff_fallback(summer_day), 0.0001)
+        == 0.1996
+    )
+    assert (
+        pytest.approx(await m.get_transport_tariff_fallback(summer_peak), 0.0001)
+        == 0.5190
+    )
+    assert (
+        pytest.approx(await m.get_transport_tariff_fallback(summer_evening), 0.0001)
+        == 0.1996
+    )
 
 
 @pytest.mark.asyncio
@@ -58,9 +82,11 @@ async def test_fetch_transport_tariff_from_api_fallback_on_failure(monkeypatch):
     # Mock the API to fail, ensure it falls back to hardcoded values
     async def mock_api_failure(*args, **kwargs):
         raise ValueError("API not available")
-    
-    monkeypatch.setattr("skodaupdatechargeprices.fetch_transport_tariff_from_api", mock_api_failure)
-    
+
+    monkeypatch.setattr(
+        "skodaupdatechargeprices.fetch_transport_tariff_from_api", mock_api_failure
+    )
+
     # Should fall back to hardcoded value for winter peak
     winter_peak = dt.datetime(2025, 1, 10, 18, 0, 0)
     result = await m.get_transport_tariff(winter_peak)
