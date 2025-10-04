@@ -39,10 +39,10 @@ async def ordinal(n):
 def escape_html(value):
     """
     Escape HTML content to prevent XSS attacks.
-    
+
     Args:
         value: The value to escape. Can be string, int, float, or None.
-        
+
     Returns:
         str: HTML-escaped string representation of the value.
     """

@@ -8,7 +8,7 @@ Two Cross-Site Scripting (XSS) vulnerabilities were identified and fixed in `sko
 
 **Issue**: User input (specifically the `month` query parameter) was being directly inserted into HTML without proper sanitization, allowing for potential XSS attacks.
 
-**Affected Lines**: 
+**Affected Lines**:
 - Lines around 181 and 391 as reported by security scanner
 - Specifically at lines 151, 159, and 229 where `{month:02d}` was used without escaping
 
@@ -36,7 +36,7 @@ All instances of unescaped `month` parameter in HTML contexts have been fixed:
 ### Fixed Locations
 
 1. **Line 151**: Title tag in empty sessions HTML template
-2. **Line 159**: H1 heading in empty sessions HTML template  
+2. **Line 159**: H1 heading in empty sessions HTML template
 3. **Line 229**: H1 heading in main sessions HTML template
 
 ### Verification
