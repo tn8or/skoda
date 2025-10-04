@@ -110,30 +110,54 @@ class TestXSSPrevention:
     def test_escape_html_function(self):
         """Test the escape_html utility function."""
         mod = load_frontend_with_stubs()
-        
+
         # Test basic escaping
-        assert mod.escape_html("<script>alert('xss')</script>") == "&lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;"
+        assert (
+            mod.escape_html("<script>alert('xss')</script>")
+            == "&lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;"
+        )
         assert mod.escape_html("&<>\"'") == "&amp;&lt;&gt;&quot;&#x27;"
-        
+
         # Test with None
         assert mod.escape_html(None) == ""
-        
+
         # Test with numbers
         assert mod.escape_html(2025) == "2025"
         assert mod.escape_html(1.5) == "1.5"
-        
+
         # Test with safe content
         assert mod.escape_html("Normal text") == "Normal text"
+
+    def test_build_charge_summary_header_function(self):
+        """Test the build_charge_summary_header helper function for XSS safety."""
+        mod = load_frontend_with_stubs()
+
+        # Test normal cases
+        assert mod.build_charge_summary_header(2025, 1) == "Charge Summary for 2025-01"
+        assert mod.build_charge_summary_header(2025, 12) == "Charge Summary for 2025-12"
+        assert mod.build_charge_summary_header(2026, 6) == "Charge Summary for 2026-06"
+
+        # Test edge cases that should be handled by FastAPI validation,
+        # but verify escaping works if somehow invalid data gets through
+        # Note: These test the function's robustness, though FastAPI should prevent such inputs
+        try:
+            # Test string values (would fail month formatting, but test year escaping)
+            result = mod.build_charge_summary_header("<script>alert('xss')</script>", 1)
+            assert "&lt;script&gt;" in result
+            assert "&gt;alert(" in result
+        except (ValueError, TypeError):
+            # Expected - month formatting requires integer, this validates type safety
+            pass
 
     @pytest.mark.asyncio
     async def test_year_parameter_escaped_in_html(self):
         """Test that year parameter is properly escaped in HTML output."""
         mod = load_frontend_with_stubs()
-        
+
         # Call with normal values - should work without escaping issues
         resp = await mod.root(year=2025, month=1)
         body = resp.body.decode("utf-8") if hasattr(resp, "body") else str(resp)
-        
+
         # Should contain the year in escaped form in the title
         assert "<title>Charge Summary for 2025-01</title>" in body
         assert "Charge Summary for 2025-01" in body
@@ -142,14 +166,14 @@ class TestXSSPrevention:
     async def test_database_content_escaped(self):
         """Test that database-derived content is properly escaped."""
         mod = load_frontend_with_stubs()
-        
+
         # Get a reference to db_connect to mock the cursor
         original_db_connect = mod.db_connect
-        
+
         async def mock_db_connect(_logger):
             """Mock db_connect with potentially malicious data."""
             from datetime import datetime
-            
+
             class MockCursor:
                 def execute(self, *args, **kwargs):
                     pass
@@ -161,7 +185,7 @@ class TestXSSPrevention:
                             datetime.now(),  # log_timestamp
                             datetime.now(),  # start_at
                             datetime.now(),  # stop_at
-                            25.5,  # amount - larger amount to ensure it's displayed 
+                            25.5,  # amount - larger amount to ensure it's displayed
                             15.0,  # price
                             100.0,  # charged_range
                             50.0,  # start_range
@@ -181,19 +205,19 @@ class TestXSSPrevention:
 
         # Temporarily replace db_connect
         mod.db_connect = mock_db_connect
-        
+
         try:
             resp = await mod.root(year=2025, month=1)
             body = resp.body.decode("utf-8") if hasattr(resp, "body") else str(resp)
-            
+
             # Should not contain unescaped script tags
             assert '<script>alert("xss")</script>' not in body
-            assert 'home<script>' not in body
-            
-            # The position field should be normalized by business logic to "away" 
+            assert "home<script>" not in body
+
+            # The position field should be normalized by business logic to "away"
             # since 'home<script>...' != "home" exactly
-            assert 'away' in body
-            
+            assert "away" in body
+
         finally:
             # Restore original db_connect
             mod.db_connect = original_db_connect
@@ -202,27 +226,27 @@ class TestXSSPrevention:
     async def test_build_metadata_escaped(self):
         """Test that build metadata from environment variables is escaped."""
         mod = load_frontend_with_stubs()
-        
+
         # Mock environment variables with XSS attempts
         original_env = os.environ.copy()
         os.environ["GIT_COMMIT"] = '<script>alert("commit")</script>'
         os.environ["GIT_TAG"] = '<img src=x onerror=alert("tag")>'
         os.environ["BUILD_DATE"] = '<script>alert("date")</script>'
-        
+
         try:
             resp = await mod.root(year=2025, month=1)
             body = resp.body.decode("utf-8") if hasattr(resp, "body") else str(resp)
-            
+
             # Should not contain unescaped script tags or img tags
             assert '<script>alert("commit")</script>' not in body
             assert '<img src=x onerror=alert("tag")>' not in body
             assert '<script>alert("date")</script>' not in body
-            
+
             # Should contain escaped versions (checking for the correct HTML entity format)
-            assert '&lt;script&gt;alert(&quot;commit&quot;)&lt;/script&gt;' in body
-            assert '&lt;img src=x onerror=alert(&quot;tag&quot;)&gt;' in body
-            assert '&lt;script&gt;alert(&quot;date&quot;)&lt;/script&gt;' in body
-            
+            assert "&lt;script&gt;alert(&quot;commit&quot;)&lt;/script&gt;" in body
+            assert "&lt;img src=x onerror=alert(&quot;tag&quot;)&gt;" in body
+            assert "&lt;script&gt;alert(&quot;date&quot;)&lt;/script&gt;" in body
+
         finally:
             # Restore original environment
             os.environ.clear()
@@ -232,30 +256,38 @@ class TestXSSPrevention:
     async def test_navigation_links_safe(self):
         """Test that navigation links with year/month parameters are safe."""
         mod = load_frontend_with_stubs()
-        
+
         resp = await mod.root(year=2025, month=1)
         body = resp.body.decode("utf-8") if hasattr(resp, "body") else str(resp)
-        
+
         # Should contain proper navigation links
-        assert '/?year=2024&month=12' in body  # Previous month
-        assert '/?year=2025&month=2' in body   # Next month
-        
+        assert "/?year=2024&month=12" in body  # Previous month
+        assert "/?year=2025&month=2" in body  # Next month
+
         # Should not contain any script tags in navigation
-        assert '<script>' not in body.split('Previous Month')[0][-100:] if 'Previous Month' in body else True
-        assert '<script>' not in body.split('Next Month')[0][-100:] if 'Next Month' in body else True
+        assert (
+            "<script>" not in body.split("Previous Month")[0][-100:]
+            if "Previous Month" in body
+            else True
+        )
+        assert (
+            "<script>" not in body.split("Next Month")[0][-100:]
+            if "Next Month" in body
+            else True
+        )
 
     @pytest.mark.asyncio
     async def test_daily_totals_date_formatting_safe(self):
         """Test that date formatting in daily totals is safe from XSS."""
         mod = load_frontend_with_stubs()
-        
+
         # Get a reference to db_connect to mock the cursor
         original_db_connect = mod.db_connect
-        
+
         async def mock_db_connect(_logger):
             """Mock db_connect with data that includes dates."""
             from datetime import datetime
-            
+
             class MockCursor:
                 def execute(self, *args, **kwargs):
                     pass
@@ -267,12 +299,12 @@ class TestXSSPrevention:
                             datetime(2025, 1, 15, 10, 0, 0),  # log_timestamp
                             datetime(2025, 1, 15, 10, 0, 0),  # start_at
                             datetime(2025, 1, 15, 11, 0, 0),  # stop_at
-                            25.5,  # amount - larger amount to ensure it's displayed 
+                            25.5,  # amount - larger amount to ensure it's displayed
                             15.0,  # price
                             100.0,  # charged_range
                             50.0,  # start_range
                             12345,  # mileage
-                            'home',  # position
+                            "home",  # position
                             80.0,  # soc
                         ),
                         (
@@ -284,9 +316,9 @@ class TestXSSPrevention:
                             80.0,  # charged_range
                             40.0,  # start_range
                             12400,  # mileage
-                            'home',  # position
+                            "home",  # position
                             75.0,  # soc
-                        )
+                        ),
                     ]
 
             class MockConn:
@@ -299,20 +331,20 @@ class TestXSSPrevention:
 
         # Temporarily replace db_connect
         mod.db_connect = mock_db_connect
-        
+
         try:
             resp = await mod.root(year=2025, month=1)
             body = resp.body.decode("utf-8") if hasattr(resp, "body") else str(resp)
-            
+
             # Should contain properly formatted dates
-            assert '2025-01-15' in body
-            assert '2025-01-16' in body
-            
+            assert "2025-01-15" in body
+            assert "2025-01-16" in body
+
             # Should not contain any script tags in the date formatting
-            assert '<script>' not in body
-            assert 'javascript:' not in body.lower()
-            assert 'onerror=' not in body.lower()
-            
+            assert "<script>" not in body
+            assert "javascript:" not in body.lower()
+            assert "onerror=" not in body.lower()
+
         finally:
             # Restore original db_connect
             mod.db_connect = original_db_connect
@@ -321,23 +353,23 @@ class TestXSSPrevention:
     async def test_url_parameters_safe_in_navigation(self):
         """Test that URL parameters in navigation links are safe from XSS."""
         mod = load_frontend_with_stubs()
-        
+
         # Test with edge case years to ensure they're handled safely
         resp = await mod.root(year=2025, month=12)  # Test December for year rollover
         body = resp.body.decode("utf-8") if hasattr(resp, "body") else str(resp)
-        
+
         # Check that navigation URLs are properly formed
-        assert '/?year=2025&month=11' in body  # Previous month
-        assert '/?year=2026&month=1' in body   # Next month (year rollover)
-        
+        assert "/?year=2025&month=11" in body  # Previous month
+        assert "/?year=2026&month=1" in body  # Next month (year rollover)
+
         # Ensure no XSS in URL parameters
-        assert 'javascript:' not in body.lower()
-        assert '<script>' not in body
-        assert 'onerror=' not in body.lower()
-        
+        assert "javascript:" not in body.lower()
+        assert "<script>" not in body
+        assert "onerror=" not in body.lower()
+
         # Test January for year rollback
         resp2 = await mod.root(year=2025, month=1)
         body2 = resp2.body.decode("utf-8") if hasattr(resp2, "body") else str(resp2)
-        
-        assert '/?year=2024&month=12' in body2  # Previous month (year rollback)
-        assert '/?year=2025&month=2' in body2   # Next month
+
+        assert "/?year=2024&month=12" in body2  # Previous month (year rollback)
+        assert "/?year=2025&month=2" in body2  # Next month
