@@ -27,8 +27,14 @@ def test_loop_logic():
 def test_syntax():
     """Test that our chargecollector module compiles correctly"""
     import ast
+    import os
 
-    with open("chargecollector.py", "r", encoding="utf-8") as f:
+    # Get the directory where this test file is located
+    test_dir = os.path.dirname(os.path.abspath(__file__))
+    # The chargecollector.py file is in the same directory as this test
+    chargecollector_path = os.path.join(test_dir, "chargecollector.py")
+    
+    with open(chargecollector_path, "r", encoding="utf-8") as f:
         code = f.read()
 
     # This will raise an exception if there's a syntax error
