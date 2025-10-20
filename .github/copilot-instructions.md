@@ -4,52 +4,37 @@ This repository contains a Python-based microservices system for collecting, pro
 
 Always reference these instructions first and fallback to search or bash commands only when you encounter unexpected information that does not match the info here.
 
-## CRITICAL NETWORK LIMITATIONS
-- **PyPI connectivity failures**: pip install operations frequently timeout due to network restrictions
-- **Docker Alpine package failures**: apk add operations in Docker builds fail with "Permission denied" errors  
-- **Python 3.13 PPA failures**: deadsnakes PPA installation fails with "Unable to find the server" errors
-- **Workaround**: Use Docker-only approach when network connectivity prevents local pip installs
-
 ## Working Effectively
 
 ### Prerequisites and Setup
 - **CRITICAL**: Requires Python 3.13 (myskoda==2.3.3 dependency requires Python >=3.13)
 - **Install Python 3.13**: `sudo apt update && sudo apt install -y software-properties-common && sudo add-apt-repository -y ppa:deadsnakes/ppa && sudo apt update && sudo apt install -y python3.13 python3.13-venv python3.13-dev`
-  - **FAILS with network issues**: deadsnakes PPA installation fails with "Unable to find the server at api.launchpad.net"
-  - **Alternative**: Use Python 3.12 for testing only: `python3.12 -m venv .venv` (limited functionality, cannot run myskoda-dependent services)
-- Docker and docker-compose for containerization (REQUIRED when pip install fails)
+- Docker and docker-compose for containerization
 - MariaDB for data storage
 
 ### Bootstrap the Development Environment
-1. **Create virtual environment**: `python3.13 -m venv .venv` (or `python3.12 -m venv .venv` if Python 3.13 unavailable)
+1. **Create virtual environment**: `python3.13 -m venv .venv`
 2. **Activate virtual environment**: `source .venv/bin/activate`
 3. **Install development tools**: `pip install pytest pytest-asyncio pytest-cov pytest-mock pip-tools`
-   - **Timing**: Takes ~30 seconds when network allows
-   - **Network failure fallback**: If pip install times out, use Docker-only approach
 4. **Install service dependencies** (choose one service to work on):
    - `pip install -r skodaimporter/requirements.txt` (for importer service)
-   - `pip install -r skodachargefinder/requirements.txt` (for charge finder service)  
+   - `pip install -r skodachargefinder/requirements.txt` (for charge finder service)
    - `pip install -r skodachargecollector/requirements.txt` (for charge collector service)
    - `pip install -r skodaupdatechargeprices/requirements.txt` (for price update service)
    - `pip install -r skodachargefrontend/requirements.txt` (for frontend service)
-   - **Network failure**: Use extended timeouts: `pip install --timeout 300 --retries 5 -r SERVICE/requirements.txt`
-
-**NOTE**: If network connectivity prevents pip installs, you can still work with the codebase using Docker builds exclusively. The Docker builds handle all dependencies internally.
 
 ### Build and Test Process
-- **Full build with testing**: `./compose.sh up` - NEVER CANCEL: Takes 60-90 minutes including mandatory Docker test stages. Set timeout to 120+ minutes.
-  - Step 1: Activates .venv and runs pytest -q (5-10 minutes, MEASURED: frontend tests 0.28s/20 tests)
-  - Step 2: Compiles requirements for all services in parallel (2-5 minutes, MEASURED: 6 seconds per service)  
-  - Step 3: Docker builds all services with mandatory test stages (45-75 minutes, FAILS with Alpine package connectivity)
+- **Full build with testing**: `./compose.sh up` - Takes 30-60 minutes including mandatory Docker test stages.
+  - Step 1: Activates .venv and runs pytest -q (5-10 minutes)
+  - Step 2: Compiles requirements for all services in parallel (2-5 minutes)
+  - Step 3: Docker builds all services with mandatory test stages (20-45 minutes)
   - Step 4: Starts services with docker-compose
-- **Run tests only**: `source .venv/bin/activate && pytest -q` - Takes 5-15 minutes. NEVER CANCEL. Set timeout to 30+ minutes.
+- **Run tests only**: `source .venv/bin/activate && pytest -q` - Takes 5-15 minutes.
   - **MEASURED**: Frontend service: 20 tests pass in 0.28s with 74% coverage
   - **REQUIRES**: Service dependencies must be installed locally (pip install -r SERVICE/requirements.txt)
 - **Update dependencies**: `pip-compile --upgrade --output-file=SERVICE/requirements.txt SERVICE/requirements.in` for each SERVICE
-  - **MEASURED**: Takes ~6 seconds per service when network allows
-- **Docker build single service**: `docker build -t SERVICE ./SERVICE` - NEVER CANCEL: Takes 30-45 minutes per service due to mandatory test stages. Set timeout to 60+ minutes.
-  - **FAILS**: Alpine package installation fails with network connectivity issues
-- **MariaDB only**: `docker compose up -d mariadb` - Works reliably, takes ~5 seconds to pull and start
+- **Docker build single service**: `docker build -t SERVICE ./SERVICE` - Takes 15-30 minutes per service due to mandatory test stages.
+- **MariaDB only**: `docker compose up -d mariadb` - Takes ~5 seconds to pull and start
   - Database accessible on port 3306 with credentials: skoda/skodapass
 
 ### Development Workflow
@@ -104,16 +89,16 @@ After making changes, ALWAYS test these complete scenarios:
 
 ### Configuration and Secrets
 - **Secrets directory**: `./secrets/` (git-ignored, must be created manually)
-- **Required secrets**: 
+- **Required secrets**:
   - SKODA_USER, SKODA_PASS (MySkoda API credentials)
   - MARIADB_DATABASE, MARIADB_USERNAME, MARIADB_PASSWORD, MARIADB_HOSTNAME (database config)
   - GRAYLOG_HOST, GRAYLOG_PORT (logging config)
   - env (environment: prod/dev)
-- **Create test secrets**: 
+- **Create test secrets**:
   ```bash
   mkdir -p secrets
   echo "testuser" > secrets/SKODA_USER
-  echo "testpass" > secrets/SKODA_PASS  
+  echo "testpass" > secrets/SKODA_PASS
   echo "skoda" > secrets/MARIADB_DATABASE
   echo "skoda" > secrets/MARIADB_USERNAME
   echo "skodapass" > secrets/MARIADB_PASSWORD
@@ -129,7 +114,7 @@ After making changes, ALWAYS test these complete scenarios:
 ```
 .
 ├── skodaimporter/           # Main MySkoda API data importer service
-├── skodachargefinder/       # Charging event detection service  
+├── skodachargefinder/       # Charging event detection service
 ├── skodachargecollector/    # Charge data collection and processing
 ├── skodaupdatechargeprices/ # Pricing information updates
 ├── skodachargefrontend/     # Web frontend for data visualization
@@ -151,7 +136,7 @@ pytest -q --cov=. --cov-report=term-missing
 
 # Run tests for specific service with exact coverage requirements
 cd skodachargefrontend && pytest -v  # 70% coverage required
-cd skodachargefinder && pytest -v    # 50% coverage required  
+cd skodachargefinder && pytest -v    # 50% coverage required
 cd skodachargecollector && pytest -v # 85% coverage required
 
 # Build and start all services (NEVER CANCEL - 60-90 minutes, FAILS with network issues)
@@ -166,11 +151,8 @@ docker compose logs -f skodaimporter
 # Access database (VERIFIED working command)
 docker exec mariadb mariadb -uskoda -pskodapass skoda -e "SHOW TABLES;"
 
-# Update a single service's dependencies (takes ~6 seconds when network allows)
+# Update a single service's dependencies
 pip-compile --upgrade --output-file=skodaimporter/requirements.txt skodaimporter/requirements.in
-
-# Install with extended timeouts for network issues
-pip install --timeout 300 --retries 5 -r SERVICE/requirements.txt
 ```
 
 ## Service Dependencies and Architecture
@@ -210,18 +192,13 @@ pip install --timeout 300 --retries 5 -r SERVICE/requirements.txt
 ## Troubleshooting
 
 ### Common Issues
-- **Python version**: Ensure Python 3.13 is used (myskoda requirement), fallback to Python 3.12 for testing only
-- **Network timeouts**: Docker builds can take 30-45 minutes per service, then fail with Alpine package issues
-- **PyPI connectivity**: pip install fails with ReadTimeoutError, try `pip install --timeout 300 --retries 5` or use Docker builds instead
-- **Python 3.13 installation**: deadsnakes PPA fails with "Unable to find the server at api.launchpad.net", use Python 3.12 for limited testing
+- **Python version**: Ensure Python 3.13 is used (myskoda requirement)
 - **Test failures**: Check coverage requirements for each service (varies from 50% to 85%)
 - **Database connectivity**: Verify MariaDB secrets are properly configured, use `docker exec mariadb mariadb -uskoda -pskodapass skoda -e "SHOW TABLES;"`
 - **Missing secrets**: Ensure all required secret files exist in ./secrets/ (create manually with test values)
-- **Docker Alpine package issues**: apk add fails in Docker builds with "Permission denied", indicates network connectivity problems that usually resolve on retry
 
 ### Performance Notes
 - **NEVER CANCEL builds or tests**: Docker builds include mandatory test stages
-- **Timeout settings**: Always use 60+ minutes for builds, 30+ minutes for tests
 - **Memory usage**: Each service test stage requires adequate memory allocation
 - **Parallel execution**: compose.sh uses parallel execution for dependency compilation
 - **MEASURED timings**:
@@ -229,7 +206,7 @@ pip install --timeout 300 --retries 5 -r SERVICE/requirements.txt
   - Development tools installation: ~30 seconds
   - Dependency compilation: ~6 seconds per service
   - MariaDB startup: ~5 seconds
-  - Docker service builds: 30-45+ minutes (often fail with network issues)
+  - Docker service builds: 15-30 minutes per service
 
 Always verify that any changes maintain the mandatory test coverage requirements and that all services can communicate properly with the database and each other.
 
