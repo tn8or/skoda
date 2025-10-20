@@ -122,6 +122,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch != '' && github.event.inputs.branch || github.event_name == 'schedule' && 'main' || github.ref }}
 
       - name: Log in to Docker Hub
         continue-on-error: true
@@ -172,24 +173,47 @@ jobs:
       - name: Determine best registry for base images
         id: registry
         run: |
-          echo "Checking available registries for python:3.13-alpine (using lightweight manifest inspection)..."
+          echo "🔍 Testing registry availability for python:3.13-alpine..."
 
-          # Try GitHub Container Registry first (fastest for GitHub Actions)
-          if docker manifest inspect ghcr.io/library/python:3.13-alpine >/dev/null 2>&1; then
-            echo "registry=ghcr.io/library/" >> $GITHUB_OUTPUT
-            echo "✅ Using GitHub Container Registry (ghcr.io) - manifest found"
-          # Try Google Container Registry mirror
-          elif docker manifest inspect mirror.gcr.io/library/python:3.13-alpine >/dev/null 2>&1; then
+          # Test Docker Hub first (most reliable fallback)
+          echo "Testing Docker Hub..."
+          if timeout 10 docker manifest inspect python:3.13-alpine >/dev/null 2>&1; then
+            DOCKERHUB_OK=true
+            echo "✅ Docker Hub: python:3.13-alpine - manifest found"
+          else
+            DOCKERHUB_OK=false
+            echo "❌ Docker Hub: python:3.13-alpine - manifest failed or timeout"
+          fi
+
+          # Test Google Container Registry mirror
+          echo "Testing Google Container Registry mirror..."
+          if timeout 10 docker manifest inspect mirror.gcr.io/library/python:3.13-alpine >/dev/null 2>&1; then
             echo "registry=mirror.gcr.io/library/" >> $GITHUB_OUTPUT
-            echo "✅ Using Google Container Registry mirror - manifest found"
-          # Check Docker Hub availability before falling back
-          elif docker manifest inspect python:3.13-alpine >/dev/null 2>&1; then
+            echo "🚀 Using Google Container Registry mirror (fastest available)"
+            exit 0
+          else
+            echo "❌ Google Container Registry mirror: manifest failed or timeout"
+          fi
+
+          # Test alternative GitHub registry paths
+          echo "Testing GitHub Container Registry alternatives..."
+          for registry_path in "ghcr.io/library/" "ghcr.io/docker/library/"; do
+            echo "  Testing ${registry_path}python:3.13-alpine..."
+            if timeout 10 docker manifest inspect "${registry_path}python:3.13-alpine" >/dev/null 2>&1; then
+              echo "registry=${registry_path}" >> $GITHUB_OUTPUT
+              echo "🚀 Using GitHub Container Registry: ${registry_path}"
+              exit 0
+            fi
+          done
+          echo "❌ GitHub Container Registry: No valid paths found"
+
+          # Fallback to Docker Hub if it was working
+          if [ "$DOCKERHUB_OK" = true ]; then
             echo "registry=" >> $GITHUB_OUTPUT
-            echo "✅ Using Docker Hub - manifest found"
-          # Final fallback without validation (build will fail gracefully if needed)
+            echo "🔄 Falling back to Docker Hub (working but slower)"
           else
             echo "registry=" >> $GITHUB_OUTPUT
-            echo "⚠️ Using Docker Hub (fallback) - no registries responded to manifest inspection"
+            echo "⚠️ All registries failed manifest inspection - using Docker Hub as last resort"
           fi
 
       - name: Build and push Docker test image
@@ -241,6 +265,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch != '' && github.event.inputs.branch || github.event_name == 'schedule' && 'main' || github.ref }}
 
       - name: Log in to Docker Hub
         continue-on-error: true
@@ -292,24 +317,47 @@ jobs:
       - name: Determine best registry for base images
         id: registry
         run: |
-          echo "Checking available registries for python:3.13-alpine (using lightweight manifest inspection)..."
+          echo "🔍 Testing registry availability for python:3.13-alpine..."
 
-          # Try GitHub Container Registry first (fastest for GitHub Actions)
-          if docker manifest inspect ghcr.io/library/python:3.13-alpine >/dev/null 2>&1; then
-            echo "registry=ghcr.io/library/" >> $GITHUB_OUTPUT
-            echo "✅ Using GitHub Container Registry (ghcr.io) - manifest found"
-          # Try Google Container Registry mirror
-          elif docker manifest inspect mirror.gcr.io/library/python:3.13-alpine >/dev/null 2>&1; then
+          # Test Docker Hub first (most reliable fallback)
+          echo "Testing Docker Hub..."
+          if timeout 10 docker manifest inspect python:3.13-alpine >/dev/null 2>&1; then
+            DOCKERHUB_OK=true
+            echo "✅ Docker Hub: python:3.13-alpine - manifest found"
+          else
+            DOCKERHUB_OK=false
+            echo "❌ Docker Hub: python:3.13-alpine - manifest failed or timeout"
+          fi
+
+          # Test Google Container Registry mirror
+          echo "Testing Google Container Registry mirror..."
+          if timeout 10 docker manifest inspect mirror.gcr.io/library/python:3.13-alpine >/dev/null 2>&1; then
             echo "registry=mirror.gcr.io/library/" >> $GITHUB_OUTPUT
-            echo "✅ Using Google Container Registry mirror - manifest found"
-          # Check Docker Hub availability before falling back
-          elif docker manifest inspect python:3.13-alpine >/dev/null 2>&1; then
+            echo "🚀 Using Google Container Registry mirror (fastest available)"
+            exit 0
+          else
+            echo "❌ Google Container Registry mirror: manifest failed or timeout"
+          fi
+
+          # Test alternative GitHub registry paths
+          echo "Testing GitHub Container Registry alternatives..."
+          for registry_path in "ghcr.io/library/" "ghcr.io/docker/library/"; do
+            echo "  Testing ${registry_path}python:3.13-alpine..."
+            if timeout 10 docker manifest inspect "${registry_path}python:3.13-alpine" >/dev/null 2>&1; then
+              echo "registry=${registry_path}" >> $GITHUB_OUTPUT
+              echo "🚀 Using GitHub Container Registry: ${registry_path}"
+              exit 0
+            fi
+          done
+          echo "❌ GitHub Container Registry: No valid paths found"
+
+          # Fallback to Docker Hub if it was working
+          if [ "$DOCKERHUB_OK" = true ]; then
             echo "registry=" >> $GITHUB_OUTPUT
-            echo "✅ Using Docker Hub - manifest found"
-          # Final fallback without validation (build will fail gracefully if needed)
+            echo "🔄 Falling back to Docker Hub (working but slower)"
           else
             echo "registry=" >> $GITHUB_OUTPUT
-            echo "⚠️ Using Docker Hub (fallback) - no registries responded to manifest inspection"
+            echo "⚠️ All registries failed manifest inspection - using Docker Hub as last resort"
           fi
 
       - name: Build and push Docker production image
