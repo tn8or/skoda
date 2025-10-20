@@ -47,7 +47,7 @@ jobs:
       - name: Show Python version
         run: python -V
 
-      # Cache pip dependencies for faster builds
+      # Cache pip dependencies for faster builds.
       - name: Cache pip
         uses: actions/cache@v4
         with:
