@@ -172,20 +172,24 @@ jobs:
       - name: Determine best registry for base images
         id: registry
         run: |
-          echo "Checking available registries for python:3.13-alpine..."
+          echo "Checking available registries for python:3.13-alpine (using lightweight manifest inspection)..."
 
           # Try GitHub Container Registry first (fastest for GitHub Actions)
-          if docker pull ghcr.io/library/python:3.13-alpine --quiet 2>/dev/null; then
+          if docker manifest inspect ghcr.io/library/python:3.13-alpine >/dev/null 2>&1; then
             echo "registry=ghcr.io/library/" >> $GITHUB_OUTPUT
-            echo "✅ Using GitHub Container Registry (ghcr.io)"
+            echo "✅ Using GitHub Container Registry (ghcr.io) - manifest found"
           # Try Google Container Registry mirror
-          elif docker pull mirror.gcr.io/library/python:3.13-alpine --quiet 2>/dev/null; then
+          elif docker manifest inspect mirror.gcr.io/library/python:3.13-alpine >/dev/null 2>&1; then
             echo "registry=mirror.gcr.io/library/" >> $GITHUB_OUTPUT
-            echo "✅ Using Google Container Registry mirror"
-          # Fallback to Docker Hub
+            echo "✅ Using Google Container Registry mirror - manifest found"
+          # Check Docker Hub availability before falling back
+          elif docker manifest inspect python:3.13-alpine >/dev/null 2>&1; then
+            echo "registry=" >> $GITHUB_OUTPUT
+            echo "✅ Using Docker Hub - manifest found"
+          # Final fallback without validation (build will fail gracefully if needed)
           else
             echo "registry=" >> $GITHUB_OUTPUT
-            echo "✅ Using Docker Hub (fallback)"
+            echo "⚠️ Using Docker Hub (fallback) - no registries responded to manifest inspection"
           fi
 
       - name: Build and push Docker test image
@@ -288,20 +292,24 @@ jobs:
       - name: Determine best registry for base images
         id: registry
         run: |
-          echo "Checking available registries for python:3.13-alpine..."
+          echo "Checking available registries for python:3.13-alpine (using lightweight manifest inspection)..."
 
           # Try GitHub Container Registry first (fastest for GitHub Actions)
-          if docker pull ghcr.io/library/python:3.13-alpine --quiet 2>/dev/null; then
+          if docker manifest inspect ghcr.io/library/python:3.13-alpine >/dev/null 2>&1; then
             echo "registry=ghcr.io/library/" >> $GITHUB_OUTPUT
-            echo "✅ Using GitHub Container Registry (ghcr.io)"
+            echo "✅ Using GitHub Container Registry (ghcr.io) - manifest found"
           # Try Google Container Registry mirror
-          elif docker pull mirror.gcr.io/library/python:3.13-alpine --quiet 2>/dev/null; then
+          elif docker manifest inspect mirror.gcr.io/library/python:3.13-alpine >/dev/null 2>&1; then
             echo "registry=mirror.gcr.io/library/" >> $GITHUB_OUTPUT
-            echo "✅ Using Google Container Registry mirror"
-          # Fallback to Docker Hub
+            echo "✅ Using Google Container Registry mirror - manifest found"
+          # Check Docker Hub availability before falling back
+          elif docker manifest inspect python:3.13-alpine >/dev/null 2>&1; then
+            echo "registry=" >> $GITHUB_OUTPUT
+            echo "✅ Using Docker Hub - manifest found"
+          # Final fallback without validation (build will fail gracefully if needed)
           else
             echo "registry=" >> $GITHUB_OUTPUT
-            echo "✅ Using Docker Hub (fallback)"
+            echo "⚠️ Using Docker Hub (fallback) - no registries responded to manifest inspection"
           fi
 
       - name: Build and push Docker production image
