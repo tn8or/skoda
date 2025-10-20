@@ -184,8 +184,8 @@ jobs:
             GIT_COMMIT=${{ steps.buildargs.outputs.git_commit }}
             GIT_TAG=${{ steps.buildargs.outputs.git_tag }}
             BUILD_DATE=${{ steps.buildargs.outputs.build_date }}
-          cache-from: |
-            type=gha
+#          cache-from: |
+#            type=gha
           cache-to: |
             type=gha,mode=max
 
@@ -278,8 +278,8 @@ jobs:
             GIT_COMMIT=${{ steps.buildargs.outputs.git_commit }}
             GIT_TAG=${{ steps.buildargs.outputs.git_tag }}
             BUILD_DATE=${{ steps.buildargs.outputs.build_date }}
-          cache-from: |
-            type=gha
+#          cache-from: |
+#            type=gha
           cache-to: |
             type=gha,mode=max
 
