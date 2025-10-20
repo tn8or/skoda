@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Step 1: Run tests for all services
+  # Step 1: Run tests for all services.
   test:
     runs-on: ubuntu-latest
     strategy:
