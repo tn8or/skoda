@@ -1,7 +1,5 @@
-# Use build arg to support multiple registries for reliability
-ARG BASE_REGISTRY=""
-ARG PYTHON_IMAGE=${BASE_REGISTRY}python:3.13-alpine
-FROM ${PYTHON_IMAGE} AS build
+# Use Google Container Registry mirror to avoid Docker Hub rate limits
+FROM mirror.gcr.io/library/python:3.13-alpine AS build
 
 WORKDIR /app
 ARG TARGETPLATFORM
@@ -65,7 +63,7 @@ RUN echo "Running tests with coverage requirements..." && \
 RUN echo "=== ALL TESTS PASSED SUCCESSFULLY ==="
 
 # Final production stage - only built if tests pass
-FROM ${PYTHON_IMAGE} AS final
+FROM mirror.gcr.io/library/python:3.13-alpine AS final
 
 # Set up runtime environment
 ENV VIRTUAL_ENV=/opt/venv

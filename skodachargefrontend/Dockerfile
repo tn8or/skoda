@@ -1,7 +1,5 @@
-# Use build arg to support multiple registries for reliability
-ARG BASE_REGISTRY=""
-ARG PYTHON_IMAGE=${BASE_REGISTRY}python:3.13-alpine
-FROM ${PYTHON_IMAGE} AS build
+# Use Google Container Registry mirror to avoid Docker Hub rate limits
+FROM mirror.gcr.io/library/python:3.13-alpine AS build
 
 WORKDIR /app
 ARG TARGETPLATFORM
@@ -18,7 +16,7 @@ COPY ./requirements.txt /tmp
 
 RUN . /opt/venv/bin/activate && pip install --no-cache-dir --upgrade -r /tmp/requirements.txt
 
-FROM ${PYTHON_IMAGE} AS final
+FROM mirror.gcr.io/library/python:3.13-alpine AS final
 
 ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
