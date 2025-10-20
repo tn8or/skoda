@@ -178,16 +178,13 @@ jobs:
           context: ${{ matrix.context-path }}
           file: ${{ matrix.context-path }}/Dockerfile
           push: true
+          no-cache: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             GIT_COMMIT=${{ steps.buildargs.outputs.git_commit }}
             GIT_TAG=${{ steps.buildargs.outputs.git_tag }}
             BUILD_DATE=${{ steps.buildargs.outputs.build_date }}
-#          cache-from: |
-#            type=gha
-          cache-to: |
-            type=gha,mode=max
 
   # Step 3b: Build production images (for main branch only)
   build-production-images:
@@ -272,16 +269,13 @@ jobs:
           context: ${{ matrix.context-path }}
           file: ${{ matrix.context-path }}/Dockerfile
           push: true
+          no-cache: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             GIT_COMMIT=${{ steps.buildargs.outputs.git_commit }}
             GIT_TAG=${{ steps.buildargs.outputs.git_tag }}
             BUILD_DATE=${{ steps.buildargs.outputs.build_date }}
-#          cache-from: |
-#            type=gha
-          cache-to: |
-            type=gha,mode=max
 
   # Step 4a: Notify test webhook (after test builds)
   notify-test-webhook:
