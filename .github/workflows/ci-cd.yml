@@ -123,17 +123,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-          ref: ${{ 
-            (
-              github.event_name == 'workflow_dispatch' && github.event.inputs.branch != ''
-            ) 
-              && github.event.inputs.branch 
-            || (
-              github.event_name == 'schedule'
-              && 'main'
-            )
-            || github.ref 
-          }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch != '' && github.event.inputs.branch || github.event_name == 'schedule' && 'main' || github.ref }}
 
       - name: Log in to Docker Hub
         continue-on-error: true
