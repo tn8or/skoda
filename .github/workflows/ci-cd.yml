@@ -102,6 +102,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
+      max-parallel: 2
       matrix:
         include:
           - image: ghcr.io/tn8or/skodaimporter
