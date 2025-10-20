@@ -1,4 +1,5 @@
-FROM python:3.13-alpine AS build
+# Use Google Container Registry mirror to avoid Docker Hub rate limits
+FROM mirror.gcr.io/library/python:3.13-alpine AS build
 
 WORKDIR /app
 ARG TARGETPLATFORM
@@ -9,19 +10,13 @@ ENV VIRTUAL_ENV=/opt/venv
 RUN python3 -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# Configure PyPI proxy
-RUN mkdir -p /root/.config/pip && \
-    echo "[global]" > /root/.config/pip/pip.conf && \
-    echo "index-url = http://pypi.lan:8080/simple/" >> /root/.config/pip/pip.conf && \
-    echo "trusted-host = pypi.lan" >> /root/.config/pip/pip.conf
-
 RUN . /opt/venv/bin/activate && pip install --no-cache-dir --upgrade pip pip-tools
 
 COPY ./requirements.txt /tmp
 
 RUN . /opt/venv/bin/activate && pip install --no-cache-dir --upgrade -r /tmp/requirements.txt
 
-FROM python:3.13-alpine AS final
+FROM mirror.gcr.io/library/python:3.13-alpine AS final
 
 ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"

@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   update:
-    runs-on: skoda-runner-set
+    runs-on: ubuntu-latest
     timeout-minutes: 20 # Dependency compilation should be quick
     steps:
       - name: Checkout
@@ -36,13 +36,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-deps-
             ${{ runner.os }}-pip-
-
-      - name: Configure PyPI proxy
-        run: |
-          mkdir -p ~/.config/pip
-          echo "[global]" > ~/.config/pip/pip.conf
-          echo "index-url = http://pypi.lan:8080/simple/" >> ~/.config/pip/pip.conf
-          echo "trusted-host = pypi.lan" >> ~/.config/pip/pip.conf
 
       - name: Install pip-tools
         run: |
