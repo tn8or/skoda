@@ -27,7 +27,6 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
-      max-parallel: 5
       matrix:
         service:
           - skodachargecollector
@@ -102,7 +101,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
-      max-parallel: 5
       matrix:
         include:
           - image: ghcr.io/tn8or/skodaimporter
@@ -220,7 +218,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
-      max-parallel: 5
       matrix:
         include:
           - image: ghcr.io/tn8or/skodaimporter
