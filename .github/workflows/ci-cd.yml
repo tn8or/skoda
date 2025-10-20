@@ -25,7 +25,7 @@ concurrency:
 jobs:
   # Step 1: Run tests for all services
   test:
-    runs-on: skoda-runner-set
+    runs-on: ubuntu-latest
     strategy:
       max-parallel: 5
       matrix:
@@ -46,14 +46,6 @@ jobs:
 
       - name: Show Python version
         run: python -V
-
-      - name: Configure PyPI proxy
-        run: |
-          mkdir -p ~/.config/pip
-          echo "[global]" > ~/.config/pip/pip.conf
-          echo "index-url = http://pypi.lan:8080/simple/" >> ~/.config/pip/pip.conf
-          echo "trusted-host = pypi.lan" >> ~/.config/pip/pip.conf
-
 
       - name: Cache pip
         uses: actions/cache@v4
@@ -107,7 +99,7 @@ jobs:
   build-test-images:
     if: github.ref != 'refs/heads/main'
     needs: [test]
-    runs-on: skoda-runner-set
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
       max-parallel: 5
@@ -217,15 +209,15 @@ jobs:
             GIT_TAG=${{ steps.buildargs.outputs.git_tag }}
             BUILD_DATE=${{ steps.buildargs.outputs.build_date }}
           cache-from: |
-            type=registry,ref=local-registry.default.svc.cluster.local:5000/buildcache/${{ steps.buildargs.outputs.service_name }}:latest
+            type=gha
           cache-to: |
-            type=registry,ref=local-registry.default.svc.cluster.local:5000/buildcache/${{ steps.buildargs.outputs.service_name }}:latest,mode=max
+            type=gha,mode=max
 
   # Step 3b: Build production images (for main branch only)
   build-production-images:
     if: github.ref == 'refs/heads/main'
     needs: [test]
-    runs-on: skoda-runner-set
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
       max-parallel: 5
@@ -335,15 +327,15 @@ jobs:
             GIT_TAG=${{ steps.buildargs.outputs.git_tag }}
             BUILD_DATE=${{ steps.buildargs.outputs.build_date }}
           cache-from: |
-            type=registry,ref=local-registry.default.svc.cluster.local:5000/buildcache/${{ steps.buildargs.outputs.service_name }}:latest
+            type=gha
           cache-to: |
-            type=registry,ref=local-registry.default.svc.cluster.local:5000/buildcache/${{ steps.buildargs.outputs.service_name }}:latest,mode=max
+            type=gha,mode=max
 
   # Step 4a: Notify test webhook (after test builds)
   notify-test-webhook:
     if: github.ref != 'refs/heads/main'
     needs: build-test-images
-    runs-on: skoda-runner-set
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Invoke test deployment hook
@@ -358,7 +350,7 @@ jobs:
   notify-production-webhook:
     if: github.ref == 'refs/heads/main'
     needs: build-production-images
-    runs-on: skoda-runner-set
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Invoke production deployment hook
