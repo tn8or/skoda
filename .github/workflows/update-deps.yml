@@ -49,7 +49,7 @@ jobs:
           for d in "${services[@]}"; do
             if [ -f "$d/requirements.in" ]; then
               echo "Updating $d/requirements.txt from $d/requirements.in"
-              (cd "$d" && pip-compile --upgrade -o requirements.txt requirements.in)
+              (cd "$d" && pip-compile --upgrade --no-emit-index-url --no-emit-trusted-host -o requirements.txt requirements.in)
             fi
           done
 
