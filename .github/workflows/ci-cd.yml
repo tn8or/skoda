@@ -120,7 +120,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
-          ref: main
           fetch-depth: 0
           fetch-tags: true
 
