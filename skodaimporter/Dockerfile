@@ -1,4 +1,7 @@
-FROM python:3.13-alpine AS build
+# Use build arg to support multiple registries for reliability
+ARG BASE_REGISTRY=""
+ARG PYTHON_IMAGE=${BASE_REGISTRY}python:3.13-alpine
+FROM ${PYTHON_IMAGE} AS build
 
 WORKDIR /app
 ARG TARGETPLATFORM
@@ -15,7 +18,7 @@ COPY ./requirements.txt /tmp
 
 RUN . /opt/venv/bin/activate && pip install --no-cache-dir --upgrade -r /tmp/requirements.txt
 
-FROM python:3.13-alpine AS final
+FROM ${PYTHON_IMAGE} AS final
 
 ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"

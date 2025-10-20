@@ -1,4 +1,7 @@
-FROM python:3.13-alpine AS build
+# Use build arg to support multiple registries for reliability
+ARG BASE_REGISTRY=""
+ARG PYTHON_IMAGE=${BASE_REGISTRY}python:3.13-alpine
+FROM ${PYTHON_IMAGE} AS build
 
 WORKDIR /app
 ARG TARGETPLATFORM
@@ -58,7 +61,7 @@ RUN echo "Running tests with coverage requirements..." && \
 RUN echo "=== ALL TESTS PASSED SUCCESSFULLY ==="
 
 # Final production stage - only built if tests pass
-FROM python:3.13-alpine AS final
+FROM ${PYTHON_IMAGE} AS final
 
 # Set up runtime environment
 ENV VIRTUAL_ENV=/opt/venv
