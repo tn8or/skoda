@@ -6,12 +6,14 @@
 #
 aiohappyeyeballs==2.6.1
     # via aiohttp
-aiohttp==3.13.1
+aiohttp==3.13.2
     # via myskoda
 aiomqtt==2.4.0
     # via myskoda
 aiosignal==1.4.0
     # via aiohttp
+annotated-doc==0.0.3
+    # via fastapi
 annotated-types==0.7.0
     # via pydantic
 anyio==4.11.0
@@ -29,7 +31,7 @@ certifi==2025.10.5
     #   httpx
 click==8.3.0
     # via uvicorn
-fastapi==0.119.1
+fastapi==0.121.0
     # via -r skodaimporter/requirements.in
 frozenlist==1.8.0
     # via
@@ -58,7 +60,7 @@ multidict==6.7.0
     #   yarl
 myskoda==2.4.3
     # via -r skodaimporter/requirements.in
-orjson==3.11.3
+orjson==3.11.4
     # via mashumaro
 paho-mqtt==2.1.0
     # via aiomqtt
@@ -78,7 +80,7 @@ pyyaml==6.0.3
     # via myskoda
 sniffio==1.3.1
     # via anyio
-starlette==0.48.0
+starlette==0.49.3
     # via fastapi
 typing-extensions==4.15.0
     # via
