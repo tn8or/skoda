@@ -487,7 +487,12 @@ async def latest_rawlog_age(threshold_seconds: int | None = Query(default=None, 
         placeholders = " OR ".join(
             ["log_message LIKE ?"] * len(VEHICLE_LOG_LIKE_PATTERNS)
         )
-        vehicle_query = f"SELECT MAX(log_timestamp) FROM skoda.rawlogs WHERE log_timestamp > ? AND ({placeholders})"
+        vehicle_query = (
+            "SELECT log_timestamp "
+            "FROM skoda.rawlogs FORCE INDEX(time) "
+            "WHERE log_timestamp > ? AND (" + placeholders + ") "
+            "ORDER BY log_timestamp DESC LIMIT 1"
+        )
         params = (cutoff_time,) + VEHICLE_LOG_LIKE_PATTERNS
 
         try:
@@ -503,8 +508,6 @@ async def latest_rawlog_age(threshold_seconds: int | None = Query(default=None, 
                 status_code=500,
                 content={"error": "database error fetching vehicle rawlogs"},
             )
-
-    vehicle_latest = row[0] if row else None
     now_utc = datetime.datetime.now(datetime.timezone.utc)
     general_age = max(0, int((now_utc - general_ts).total_seconds()))
 
