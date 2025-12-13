@@ -235,3 +235,21 @@ Follow these coding standards when working in this repository:
 - Ensure lines do not exceed 79 characters
 - Always include test cases for critical paths of the application
 - Account for common edge cases like empty inputs, invalid data types, and large datasets
+
+## Security Considerations
+
+- **XSS Prevention**: Always use `escape_html()` function for user input and database content before inserting into HTML templates
+- **Input Validation**: Validate and sanitize all user inputs at API boundaries
+- **Secrets Management**: Never commit secrets to the repository; use the `./secrets/` directory (git-ignored)
+- **Dependency Security**: Regular security audits run via pip-audit in CI/CD pipeline
+- For detailed security information, see:
+  - [SECURITY.md](../SECURITY.md) - GitHub Actions security model
+  - [SECURITY_SCAN_GUIDE.md](../SECURITY_SCAN_GUIDE.md) - Security scanning procedures
+  - [XSS_FIX_SUMMARY.md](../XSS_FIX_SUMMARY.md) - XSS vulnerability fixes
+
+## Additional Documentation
+
+- **[README.md](../README.md)**: Quick start guide and project overview
+- **[SECURITY.md](../SECURITY.md)**: Security policies and GitHub Actions security
+- **[SECURITY_SCAN_GUIDE.md](../SECURITY_SCAN_GUIDE.md)**: How to run security scans
+- **[XSS_FIX_SUMMARY.md](../XSS_FIX_SUMMARY.md)**: Details on XSS vulnerability fixes
