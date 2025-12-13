@@ -1,27 +1,18 @@
-import asyncio
 import datetime
 import html
-import json
-import logging
 import os
-import time
 from zoneinfo import ZoneInfo
 
-from fastapi import BackgroundTasks, FastAPI, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi import FastAPI, Query
+from fastapi.responses import HTMLResponse, JSONResponse
 from helpers import (
     compute_daily_totals_home,
     compute_session_summary,
     group_sessions_by_mileage,
 )
 
-import mariadb
-from commons import db_connect, get_logger, load_secret
+from commons import db_connect, get_logger
 
-lastsoc = 0
-lastrange = 0
-lastlat = 0
-lastlon = 0
 my_logger = get_logger("skodachargefrontendlogger")
 my_logger.warning("Starting the application...")
 
@@ -315,7 +306,6 @@ async def root(
         summary = compute_session_summary(sess_rows)
         amount = summary["amount"]
         price = summary["price"]
-        any_away = summary["any_away"]
         position = summary["position"]
         # Range aggregation
         charged_range_vals = [
@@ -487,18 +477,32 @@ async def latest_rawlog_age(threshold_seconds: int | None = Query(default=None, 
         )
 
     # Now check for vehicle telemetry logs specifically
-    placeholders = " OR ".join(["log_message LIKE ?"] * len(VEHICLE_LOG_LIKE_PATTERNS))
-    vehicle_query = f"SELECT MAX(log_timestamp) FROM skoda.rawlogs WHERE {placeholders}"
+    # Use an efficient tiered search: check recent logs first (1 day),
+    # then expand backward if needed. This avoids expensive full-table scans.
+    vehicle_latest = None
+    search_days = [1, 7, 30]  # Search windows in days
 
-    try:
-        cur.execute(vehicle_query, VEHICLE_LOG_LIKE_PATTERNS)
-        row = cur.fetchone()
-    except Exception as e:
-        my_logger.error("Error fetching vehicle rawlog timestamp: %s", e)
-        return JSONResponse(
-            status_code=500,
-            content={"error": "database error fetching vehicle rawlogs"},
+    for days_back in search_days:
+        cutoff_time = (general_ts - datetime.timedelta(days=days_back)).isoformat()
+        placeholders = " OR ".join(
+            ["log_message LIKE ?"] * len(VEHICLE_LOG_LIKE_PATTERNS)
         )
+        vehicle_query = f"SELECT MAX(log_timestamp) FROM skoda.rawlogs WHERE log_timestamp > ? AND ({placeholders})"
+        params = (cutoff_time,) + VEHICLE_LOG_LIKE_PATTERNS
+
+        try:
+            cur.execute(vehicle_query, params)
+            row = cur.fetchone()
+            vehicle_latest = row[0] if row else None
+            if vehicle_latest is not None:
+                my_logger.debug(f"Found vehicle logs within {days_back} day(s)")
+                break
+        except Exception as e:
+            my_logger.error("Error fetching vehicle rawlog timestamp: %s", e)
+            return JSONResponse(
+                status_code=500,
+                content={"error": "database error fetching vehicle rawlogs"},
+            )
 
     vehicle_latest = row[0] if row else None
     now_utc = datetime.datetime.now(datetime.timezone.utc)

@@ -8,3 +8,5 @@ test.log
 .db
 db
 .coverage
+.graylog-reference.md
+.graylog-reference.md
