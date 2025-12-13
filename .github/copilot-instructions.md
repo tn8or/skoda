@@ -178,16 +178,27 @@ pip-compile --upgrade --output-file=skodaimporter/requirements.txt skodaimporter
 ## CI/CD and GitHub Actions
 
 ### Workflow Files
-- **ci.yml**: Runs tests on all services with Python 3.13
-- **ghcr-image.yml**: Builds and pushes Docker images to GitHub Container Registry
-- **pip-audit.yml**: Security scanning of dependencies
-- **update-deps.yml**: Automated dependency updates
+- **ci-cd.yml**: Combined CI/CD pipeline that includes:
+  - Testing all services with Python 3.13
+  - Security scanning with pip-audit
+  - Building and pushing Docker images to GitHub Container Registry
+  - Deployment webhooks for test and production environments
+- **update-deps.yml**: Automated dependency updates using pip-compile
 
 ### Build Pipeline
 1. Tests run in parallel for all services
-2. Docker images built only after successful tests
-3. Multi-platform builds (linux/amd64, linux/arm64)
-4. Automatic deployment webhook after successful builds
+2. Security audit runs with pip-audit for each service
+3. Docker images built only after successful tests
+4. Multi-platform builds (linux/amd64, linux/arm64)
+5. Test images built for PRs and non-main branches
+6. Production images built and deployed only from main branch
+7. Automatic deployment webhooks after successful builds
+
+### Security
+Refer to [SECURITY.md](../SECURITY.md) for details on:
+- GitHub Actions security model
+- Workflow isolation and privilege separation
+- Branch protection and security controls
 
 ## Troubleshooting
 
@@ -224,3 +235,21 @@ Follow these coding standards when working in this repository:
 - Ensure lines do not exceed 79 characters
 - Always include test cases for critical paths of the application
 - Account for common edge cases like empty inputs, invalid data types, and large datasets
+
+## Security Considerations
+
+- **XSS Prevention**: Always use `escape_html()` function for user input and database content before inserting into HTML templates
+- **Input Validation**: Validate and sanitize all user inputs at API boundaries
+- **Secrets Management**: Never commit secrets to the repository; use the `./secrets/` directory (git-ignored)
+- **Dependency Security**: Regular security audits run via pip-audit in CI/CD pipeline
+- For detailed security information, see:
+  - [SECURITY.md](../SECURITY.md) - GitHub Actions security model
+  - [SECURITY_SCAN_GUIDE.md](../SECURITY_SCAN_GUIDE.md) - Security scanning procedures
+  - [XSS_FIX_SUMMARY.md](../XSS_FIX_SUMMARY.md) - XSS vulnerability fixes
+
+## Additional Documentation
+
+- **[README.md](../README.md)**: Quick start guide and project overview
+- **[SECURITY.md](../SECURITY.md)**: Security policies and GitHub Actions security
+- **[SECURITY_SCAN_GUIDE.md](../SECURITY_SCAN_GUIDE.md)**: How to run security scans
+- **[XSS_FIX_SUMMARY.md](../XSS_FIX_SUMMARY.md)**: Details on XSS vulnerability fixes

@@ -6,17 +6,20 @@ This repository follows GitHub Actions security best practices to prevent execut
 
 ### Workflow Security Model
 
-- **CI Workflow (`ci.yml`)**: Runs on `pull_request` and `push` triggers in unprivileged context
-- **Docker Build Workflow (`ghcr-image.yml`)**: Uses `workflow_run` trigger for privileged operations
+- **CI/CD Pipeline (`ci-cd.yml`)**: Combined workflow that handles testing, security audits, and image building
+  - Runs on `pull_request` and `push` triggers for testing and security audits
+  - Builds test images for PRs and non-main branches
+  - Builds production images only after successful tests on main branch
+  - Includes pip-audit security scanning for all services
 - **Dependency Updates (`update-deps.yml`)**: Uses `schedule` and `workflow_dispatch` triggers only
-- **Security Audits (`pip-audit.yml`)**: Runs on `pull_request` and `push` in unprivileged context
 
 ### Security Measures Implemented
 
-1. **Isolation of Untrusted Code**: Pull requests run in unprivileged `pull_request` context without access to secrets
-2. **Privileged Operations**: Docker image building and deployment use `workflow_run` trigger that only executes after successful CI on trusted branches
-3. **Trusted Code Checkout**: The `ghcr-image.yml` workflow explicitly checks out the `main` branch instead of potentially untrusted PR code
-4. **Branch Protection**: The Docker workflow only runs on pushes to the `main` branch
+1. **Isolation of Untrusted Code**: Pull requests run in unprivileged `pull_request` context without access to deployment secrets
+2. **Conditional Image Building**: Production images with deployment webhooks only execute after successful tests on main branch
+3. **Test vs Production Separation**: PR builds create test images only, without triggering production deployments
+4. **Branch Protection**: Production image builds and deployment webhooks only run on pushes to the `main` branch
+5. **Security Scanning**: pip-audit runs on all pull requests and pushes to detect dependency vulnerabilities
 
 ### Avoided Anti-Patterns
 
@@ -27,14 +30,26 @@ This repository follows GitHub Actions security best practices to prevent execut
 
 ### Security Controls
 
-The `ghcr-image.yml` workflow includes these security controls:
+The `ci-cd.yml` workflow includes these security controls:
 
 ```yaml
-# Only run on successful CI from push events to main branch
-if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' }}
-
-# Always checkout trusted main branch, never untrusted PR code
-ref: main
+# Test images built for non-main branches (PRs)
+build-test-images:
+  if: github.ref != 'refs/heads/main'
+  needs: [test]
+  
+# Production images only built from main branch
+build-production-images:
+  if: github.ref == 'refs/heads/main'
+  needs: [test]
+  
+# Production webhooks only triggered after successful production builds
+notify-production-webhook:
+  if: github.ref == 'refs/heads/main'
+  needs: [build-production-images]
 ```
 
-This ensures that Docker images are only built from trusted code that has passed CI and been merged to the main branch.
+This ensures that:
+- All code must pass tests before any images are built
+- Production images and deployments only occur from trusted main branch code
+- PRs can build test images but cannot trigger production deployments
