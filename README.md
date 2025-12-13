@@ -102,7 +102,8 @@ Tip: If you want to persist the local log file, add a volume:
 ├── requirements.txt        # Python dependencies
 ├── .github/
 │   └── workflows/
-│       └── ghcr-image.yml  # CI to build/push Docker images (GHCR)
+│       ├── ci-cd.yml       # Combined CI/CD pipeline (testing, security, image building)
+│       └── update-deps.yml # Automated dependency updates
 ├── README.md               # This file
 └── app.log                 # Runtime log file (created at runtime)
 ```
@@ -122,7 +123,12 @@ Future improvement ideas:
 
 ## CI/CD
 
-The `ghcr-image.yml` workflow builds and pushes a Docker image to GitHub Container Registry (GHCR). A deployment webhook can be invoked after the image is pushed.
+The `ci-cd.yml` workflow provides a complete CI/CD pipeline that:
+- Runs tests for all services with Python 3.13
+- Performs security scanning with pip-audit
+- Builds and pushes Docker images to GitHub Container Registry (GHCR)
+- Separates test images (for PRs) from production images (main branch only)
+- Invokes deployment webhooks after successful builds
 
 ## Roadmap
 
@@ -140,12 +146,14 @@ MIT — see [LICENSE](LICENSE).
 
 ## GitHub Actions
 
-The repository includes several GitHub Actions workflows:
-- **CI Workflow** (`ci.yml`): Uses `python:3.13-slim` container for testing
-- **Docker Build Workflow** (`ghcr-image.yml`): Uses `docker:27-dind` for building production images
-- **Test Image Workflow** (`test-image.yml`): Uses `docker:27-dind` for building test images
-- **Pip Audit Workflow** (`pip-audit.yml`): Uses `python:3.13-slim` for security scanning
-- **Update Dependencies Workflow** (`update-deps.yml`): Uses `python:3.13-slim` for dependency updates
+The repository includes the following GitHub Actions workflows:
+- **CI/CD Pipeline** (`ci-cd.yml`): Combined workflow that handles:
+  - Testing all services with Python 3.13 in `python:3.13-slim` containers
+  - Security scanning with pip-audit
+  - Building test images with `docker:27-dind` for PRs and non-main branches
+  - Building production images with `docker:27-dind` for main branch
+  - Deployment webhooks for production releases
+- **Update Dependencies Workflow** (`update-deps.yml`): Uses `python:3.13-slim` for automated dependency updates with pip-compile
 
 ## Author
 
