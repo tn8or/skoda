@@ -8,8 +8,10 @@ A small, experimental project that subscribes to the MySkoda service and forward
 
 - Event subscription to MySkoda for near‑real‑time status updates
 - Graylog integration for centralized logs (charging status, battery, odometer, position, etc.)
-- FastAPI endpoint to view the last 30 lines of the application log
-- Early roadmap: persist charging sessions to a DB to calculate running costs
+- FastAPI endpoints for charge summaries and system health monitoring
+- **Vehicle Telemetry Detection**: Health checks distinguish between service logs and actual car communication
+- Database persistence for charging sessions with cost calculations
+- Web dashboard for charge history visualization
 
 ## Requirements
 
@@ -114,11 +116,24 @@ Tip: If you want to persist the local log file, add a volume:
 
 ## API
 
-- GET `/` — returns the last 30 lines of `app.log`.
+### skodachargefrontend Service
+
+- **GET `/`** — Returns charge summary dashboard for specified year/month
+- **GET `/health/rawlogs/age`** — Returns health status of the data pipeline:
+  - Monitors both **general service logs** and **vehicle telemetry logs** separately
+  - Returns HTTP 503 if vehicle logs are missing or older than optional threshold
+  - Useful for alerting when the service is running but the car isn't communicating
+  - Query params:
+    - `threshold_seconds` (optional): Alert if vehicle telemetry age exceeds this value
+  - Response includes:
+    - `vehicle_age_seconds`: Age of latest vehicle telemetry (from patterns like `%ServiceEvent%`, `%ChargingState%`, etc.)
+    - `general_age_seconds`: Age of latest general service log
+    - `within_threshold`: Boolean indicating if vehicle logs are within threshold
+    - HTTP 503 response if vehicle logs are missing or threshold exceeded
 
 Future improvement ideas:
 - Optional query parameter like `?lines=100` to control the amount of log lines returned.
-- Additional endpoints (healthz/metrics).
+- Dashboard metrics and historical charts.
 
 ## CI/CD
 
@@ -126,8 +141,10 @@ The `ghcr-image.yml` workflow builds and pushes a Docker image to GitHub Contain
 
 ## Roadmap
 
-- Persist charging session data to a database to compute running costs
+- ✅ Persist charging session data to a database to compute running costs
+- ✅ Vehicle telemetry detection in health checks
 - Enrich analytics (efficiency, costs, battery health trends)
+- Advanced alerting based on telemetry age and pattern detection
 - Harden error handling and reconnection logic
 
 ## Contributing

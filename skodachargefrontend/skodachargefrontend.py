@@ -1,27 +1,18 @@
-import asyncio
 import datetime
 import html
-import json
-import logging
 import os
-import time
 from zoneinfo import ZoneInfo
 
-from fastapi import BackgroundTasks, FastAPI, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi import FastAPI, Query
+from fastapi.responses import HTMLResponse, JSONResponse
 from helpers import (
     compute_daily_totals_home,
     compute_session_summary,
     group_sessions_by_mileage,
 )
 
-import mariadb
-from commons import db_connect, get_logger, load_secret
+from commons import db_connect, get_logger
 
-lastsoc = 0
-lastrange = 0
-lastlat = 0
-lastlon = 0
 my_logger = get_logger("skodachargefrontendlogger")
 my_logger.warning("Starting the application...")
 
@@ -315,7 +306,6 @@ async def root(
         summary = compute_session_summary(sess_rows)
         amount = summary["amount"]
         price = summary["price"]
-        any_away = summary["any_away"]
         position = summary["position"]
         # Range aggregation
         charged_range_vals = [
