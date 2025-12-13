@@ -8,8 +8,10 @@ from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 from helpers import (
     compute_daily_totals_home,
+    compute_monthly_average_efficiency,
     compute_normalized_efficiency,
     compute_session_summary,
+    filter_efficiency_data,
     group_sessions_by_mileage,
 )
 
@@ -103,11 +105,11 @@ async def root(
 
     build_date_local = _fmt_build_date(build_date)
     conn, cur = await db_connect(my_logger)
-    start_date = datetime.date(year, month, 1)
-    if month == 12:
-        end_date = datetime.date(year + 1, 1, 1)
-    else:
-        end_date = datetime.date(year, month + 1, 1)
+
+    # Fetch annual data for the entire year (needed for monthly averages chart)
+    annual_start_date = datetime.date(year, 1, 1)
+    annual_end_date = datetime.date(year + 1, 1, 1)
+
     # Fetch raw hourly rows; we'll group into sessions (plug-in -> unplug) in Python
     query = (
         "SELECT log_timestamp, start_at, stop_at, amount, price, charged_range, "
@@ -117,12 +119,19 @@ async def root(
         "ORDER BY mileage, start_at, log_timestamp"
     )
     my_logger.debug(
-        "Executing session source query with start_date: %s, end_date: %s",
-        start_date,
-        end_date,
+        "Executing annual session source query with start_date: %s, end_date: %s",
+        annual_start_date,
+        annual_end_date,
     )
-    cur.execute(query, (start_date, end_date))
-    rows = cur.fetchall() or []
+    cur.execute(query, (annual_start_date, annual_end_date))
+    annual_rows = cur.fetchall() or []
+
+    # For the monthly view table, filter to the requested month
+    month_start_date = datetime.date(year, month, 1)
+    if month == 12:
+        month_end_date = datetime.date(year + 1, 1, 1)
+    else:
+        month_end_date = datetime.date(year, month + 1, 1)
 
     # Normalize to tuples of python types
     def _to_dt(v):
@@ -132,10 +141,11 @@ async def root(
             return v
         try:
             return datetime.datetime.fromisoformat(str(v))
-        except Exception:
+        except (ValueError, TypeError):
             return None
 
-    hourly = [
+    # Convert all annual data to hourly format
+    annual_hourly = [
         {
             "log_timestamp": _to_dt(r[0]),
             "start_at": _to_dt(r[1]),
@@ -148,11 +158,34 @@ async def root(
             "position": r[8] or "Unknown",
             "soc": float(r[9]) if r[9] is not None else None,
         }
-        for r in rows
+        for r in annual_rows
+    ]
+
+    # Filter annual hourly data to current month for the table
+    hourly = [
+        h
+        for h in annual_hourly
+        if h["stop_at"] and month_start_date <= h["stop_at"].date() < month_end_date
     ]
 
     # Group hourly rows to sessions by mileage
     sessions = group_sessions_by_mileage(hourly)
+
+    # Compute annual efficiency data for the yearly chart
+    annual_sessions = group_sessions_by_mileage(annual_hourly)
+    annual_efficiency_data = compute_normalized_efficiency(annual_sessions)
+
+    # Build monthly averages for all 12 months of the year
+    monthly_chart_labels = []
+    monthly_estimated_points = []
+    monthly_actual_points = []
+
+    for m in range(1, 13):
+        month_avg = compute_monthly_average_efficiency(annual_efficiency_data, year, m)
+        month_name = datetime.datetime(year, m, 1).strftime("%b")
+        monthly_chart_labels.append(month_name)
+        monthly_estimated_points.append(month_avg.get("estimated_efficiency_avg"))
+        monthly_actual_points.append(month_avg.get("actual_efficiency_avg"))
 
     prev_month = month - 1
     prev_year = year
@@ -398,7 +431,77 @@ async def root(
                     <a href=\"/\" class=\"text-blue-400 hover:underline\">Home</a>
                     <span class=\"mx-2 text-white\">|</span>
                     <a href=\"/?year={escape_html(next_year)}&month={escape_html(next_month)}\" class=\"text-blue-400 hover:underline\">Next Month »</a>
-                </div>                <div class="text-center mt-4">
+                </div>
+
+                <!-- Monthly Efficiency Chart -->
+                <div class=\"mt-12\">
+                    <h2 class=\"text-2xl font-bold text-white mb-4 text-center\">Monthly Efficiency</h2>
+                    <div style=\"position: relative; width: 95%; max-width: 900px; height: 400px; margin: 20px auto;\">
+                        <canvas id=\"monthlyEfficiencyChart\"></canvas>
+                    </div>
+                    <script src=\"https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js\"><\/script>
+                    <script>
+                        const monthlyLabels = {json.dumps(monthly_chart_labels)};
+                        const monthlyEstimated = {json.dumps(monthly_estimated_points)};
+                        const monthlyActual = {json.dumps(monthly_actual_points)};
+
+                        const monthlyCtx = document.getElementById('monthlyEfficiencyChart').getContext('2d');
+                        new Chart(monthlyCtx, {{
+                            type: 'line',
+                            data: {{
+                                labels: monthlyLabels,
+                                datasets: [
+                                    {{
+                                        label: 'Range-Based Efficiency (km @ 100%)',
+                                        data: monthlyEstimated,
+                                        borderColor: 'rgb(100, 200, 255)',
+                                        backgroundColor: 'rgba(100, 200, 255, 0.05)',
+                                        borderWidth: 2,
+                                        fill: true,
+                                        tension: 0.3,
+                                        pointRadius: 4,
+                                        pointBackgroundColor: 'rgb(100, 200, 255)',
+                                    }},
+                                    {{
+                                        label: 'Mileage-Based Efficiency (km @ 100%)',
+                                        data: monthlyActual,
+                                        borderColor: 'rgb(144, 238, 144)',
+                                        backgroundColor: 'rgba(144, 238, 144, 0.05)',
+                                        borderWidth: 2,
+                                        fill: true,
+                                        tension: 0.3,
+                                        pointRadius: 4,
+                                        pointBackgroundColor: 'rgb(144, 238, 144)',
+                                    }}
+                                ]
+                            }},
+                            options: {{
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                interaction: {{ mode: 'index', intersect: false }},
+                                plugins: {{
+                                    legend: {{
+                                        labels: {{ color: 'rgb(255, 255, 255)', font: {{ size: 12 }}, padding: 15 }}
+                                    }}
+                                }},
+                                scales: {{
+                                    y: {{
+                                        beginAtZero: true,
+                                        max: 600,
+                                        ticks: {{ color: 'rgb(255, 255, 255)' }},
+                                        grid: {{ color: 'rgba(255, 255, 255, 0.1)' }}
+                                    }},
+                                    x: {{
+                                        ticks: {{ color: 'rgb(255, 255, 255)', maxRotation: 45, minRotation: 45 }},
+                                        grid: {{ color: 'rgba(255, 255, 255, 0.1)' }}
+                                    }}
+                                }}
+                            }}
+                        }});
+                    <\/script>
+                </div>
+
+                <div class="text-center mt-4">
                     <a href="/efficiency?year={escape_html(year)}" class="text-blue-400 hover:underline">View Year Efficiency Chart</a>
                 </div>                <div class=\"text-center mt-4 text-gray-400 text-sm\">
                     Build:
@@ -729,33 +832,17 @@ async def efficiency_chart(
     sessions = group_sessions_by_mileage(hourly)
     efficiency_data = compute_normalized_efficiency(sessions)
 
-    # Build chart data: labels (dates) and separate datasets for estimated vs actual efficiency
-    # Filter outliers:
-    #   - Efficiency values must be between 150 and 550 km per 100% charge
-    #   - SOC gain must be at least 20% (to exclude partial top-ups)
+    # Build monthly averages for all 12 months of the year
     labels = []
     estimated_data_points = []
     actual_data_points = []
-    for eff in efficiency_data:
-        est_eff = eff.get("estimated_efficiency")
-        actual_eff = eff.get("actual_efficiency")
-        soc_gain = eff.get("soc_gain", 0)
 
-        # Only include if estimated_efficiency is within valid range (150-550)
-        # AND SOC gain is at least 20%
-        if est_eff is not None and 150 <= est_eff <= 550 and soc_gain >= 20:
-            stop_at = eff["stop_at"]
-            if isinstance(stop_at, datetime.datetime):
-                labels.append(stop_at.strftime("%Y-%m-%d"))
-            else:
-                labels.append(str(stop_at))
-            estimated_data_points.append(est_eff)
-
-            # For actual efficiency: only add if within valid range, otherwise None
-            if actual_eff is not None and 150 <= actual_eff <= 550:
-                actual_data_points.append(actual_eff)
-            else:
-                actual_data_points.append(None)
+    for month in range(1, 13):
+        month_avg = compute_monthly_average_efficiency(efficiency_data, year, month)
+        month_name = datetime.datetime(year, month, 1).strftime("%b")
+        labels.append(month_name)
+        estimated_data_points.append(month_avg.get("estimated_efficiency_avg"))
+        actual_data_points.append(month_avg.get("actual_efficiency_avg"))
 
     # Build HTML with Chart.js - dual graphs for estimated and actual efficiency
     html_content = f"""
@@ -780,13 +867,13 @@ async def efficiency_chart(
             <div class="container px-5 py-12 mx-auto lg:px-20">
                 <div class="flex flex-col flex-wrap text-white">
                     <h1 class="mb-4 text-3xl font-medium text-white">
-                        Range Efficiency Comparison - {escape_html(year)}
+                        Monthly Average Range Efficiency - {escape_html(year)}
                     </h1>
                     <p class="mb-2 text-gray-400">
-                        <strong>Blue Line (Range-Based):</strong> Car's predicted range gain per 100% battery charge.
+                        <strong>Blue Line (Range-Based):</strong> Monthly average of car's predicted range gain per 100% battery charge.
                     </p>
                     <p class="mb-8 text-gray-400">
-                        <strong>Green Line (Mileage-Based):</strong> Real-world efficiency based on distance driven. Filtered: 150-550 km per 100% charge, minimum 20% SOC gain per charge.
+                        <strong>Green Line (Mileage-Based):</strong> Monthly average real-world efficiency based on distance driven. Filtered: 150-550 km per 100% charge, minimum 20% SOC gain per charge.
                     </p>
                 </div>
 

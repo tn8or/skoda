@@ -237,3 +237,83 @@ def compute_footer_metrics(sessions: List[Dict[str, Any]]) -> Dict[str, float]:
         "estimated_km_per_kwh": estimated,
         "actual_km_per_kwh": actual,
     }
+
+
+def filter_efficiency_data(
+    efficiency_data: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    Filter efficiency data by outlier rules:
+      - Efficiency values must be between 150 and 550 km per 100% charge
+      - SOC gain must be at least 20%
+
+    Returns filtered list maintaining order.
+    """
+    filtered = []
+    for eff in efficiency_data:
+        est_eff = eff.get("estimated_efficiency")
+        soc_gain = eff.get("soc_gain", 0)
+
+        if est_eff is not None and 150 <= est_eff <= 550 and soc_gain >= 20:
+            filtered.append(eff)
+
+    return filtered
+
+
+def compute_monthly_average_efficiency(
+    efficiency_data: List[Dict[str, Any]],
+    year: int,
+    month: int,
+) -> Dict[str, Any]:
+    """
+    Compute monthly average efficiency from filtered charge sessions.
+
+    Filters data to only include charges where stop_at is in the given month/year.
+
+    Returns dict with:
+      - estimated_efficiency_avg: average of estimated_efficiency (km per 100%)
+      - actual_efficiency_avg: average of actual_efficiency when available
+      - count: number of charges included in the month
+    """
+    filtered = filter_efficiency_data(efficiency_data)
+
+    # Filter by month/year
+    month_filtered = []
+    for eff in filtered:
+        stop_at = eff.get("stop_at")
+        if stop_at is None:
+            continue
+        if isinstance(stop_at, str):
+            try:
+                stop_at = datetime.datetime.fromisoformat(stop_at)
+            except (ValueError, TypeError):
+                continue
+        if stop_at.year == year and stop_at.month == month:
+            month_filtered.append(eff)
+
+    if not month_filtered:
+        return {
+            "estimated_efficiency_avg": None,
+            "actual_efficiency_avg": None,
+            "count": 0,
+        }
+
+    est_vals = [
+        e.get("estimated_efficiency")
+        for e in month_filtered
+        if e.get("estimated_efficiency") is not None
+    ]
+    actual_vals = [
+        e.get("actual_efficiency")
+        for e in month_filtered
+        if e.get("actual_efficiency") is not None
+    ]
+
+    avg_est = round(sum(est_vals) / len(est_vals), 2) if est_vals else None
+    avg_actual = round(sum(actual_vals) / len(actual_vals), 2) if actual_vals else None
+
+    return {
+        "estimated_efficiency_avg": avg_est,
+        "actual_efficiency_avg": avg_actual,
+        "count": len(month_filtered),
+    }

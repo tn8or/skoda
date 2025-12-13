@@ -179,12 +179,12 @@ class TestXSSPrevention:
                     pass
 
                 def fetchall(self):
-                    # Return mock data with XSS attempts
+                    # Return mock data with XSS attempts, in January 2025
                     return [
                         (
-                            datetime.now(),  # log_timestamp
-                            datetime.now(),  # start_at
-                            datetime.now(),  # stop_at
+                            datetime(2025, 1, 15, 10, 0, 0),  # log_timestamp
+                            datetime(2025, 1, 15, 10, 0, 0),  # start_at
+                            datetime(2025, 1, 15, 11, 0, 0),  # stop_at - in January
                             25.5,  # amount - larger amount to ensure it's displayed
                             15.0,  # price
                             100.0,  # charged_range
@@ -340,10 +340,12 @@ class TestXSSPrevention:
             assert "2025-01-15" in body
             assert "2025-01-16" in body
 
-            # Should not contain any script tags in the date formatting
-            assert "<script>" not in body
+            # Should not contain dangerous XSS patterns in the date formatting
+            # Check for injected event handlers or javascript: URLs (not legitimate <script> tags)
             assert "javascript:" not in body.lower()
             assert "onerror=" not in body.lower()
+            assert "onload=" not in body.lower()
+            assert "onclick=" not in body.lower()
 
         finally:
             # Restore original db_connect
@@ -373,3 +375,79 @@ class TestXSSPrevention:
 
         assert "/?year=2024&month=12" in body2  # Previous month (year rollback)
         assert "/?year=2025&month=2" in body2  # Next month
+
+    @pytest.mark.asyncio
+    async def test_monthly_efficiency_chart_renders(self):
+        """Test that the monthly efficiency chart renders with proper data."""
+        mod = load_frontend_with_stubs()
+
+        original_db_connect = mod.db_connect
+
+        async def mock_db_connect(_logger):
+            """Mock db_connect with efficiency data."""
+            from datetime import datetime
+
+            class MockCursor:
+                def execute(self, *args, **kwargs):
+                    pass
+
+                def fetchall(self):
+                    # Return data for January with good efficiency
+                    return [
+                        (
+                            datetime(2025, 1, 10, 10, 0, 0),
+                            datetime(2025, 1, 10, 10, 0, 0),
+                            datetime(2025, 1, 10, 11, 0, 0),
+                            25.0,  # amount
+                            15.0,  # price
+                            400.0,  # charged_range
+                            100.0,  # start_range
+                            10000,  # mileage
+                            "home",
+                            80.0,  # soc
+                        ),
+                        (
+                            datetime(2025, 2, 10, 10, 0, 0),
+                            datetime(2025, 2, 10, 10, 0, 0),
+                            datetime(2025, 2, 10, 11, 0, 0),
+                            25.0,
+                            15.0,
+                            420.0,
+                            100.0,
+                            10500,
+                            "home",
+                            80.0,
+                        ),
+                    ]
+
+            class MockConn:
+                auto_reconnect = True
+
+                def cursor(self):
+                    return MockCursor()
+
+            return MockConn(), MockCursor()
+
+        mod.db_connect = mock_db_connect
+
+        try:
+            resp = await mod.root(year=2025, month=1)
+            body = resp.body.decode("utf-8") if hasattr(resp, "body") else str(resp)
+
+            # Should contain monthly efficiency chart section
+            assert "Monthly Efficiency" in body
+            assert "monthlyEfficiencyChart" in body
+
+            # Should contain Chart.js reference
+            assert "chart.js" in body.lower()
+
+            # Should have JavaScript arrays for chart data
+            assert "const monthlyLabels" in body
+            assert "const monthlyEstimated" in body
+            assert "const monthlyActual" in body
+
+            # Should have month abbreviations in JSON
+            assert '"Jan"' in body or "'Jan'" in body
+
+        finally:
+            mod.db_connect = original_db_connect
