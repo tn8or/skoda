@@ -28,6 +28,20 @@ my_logger.warning("Starting the application...")
 # Local timezone for all displayed timestamps
 TZ_CPH = ZoneInfo("Europe/Copenhagen")
 
+# Rawlog patterns that indicate the car actually sent telemetry.
+# These match the log messages written by skodaimporter when it receives vehicle events.
+VEHICLE_LOG_LIKE_PATTERNS = (
+    "%ServiceEvent%",
+    "%Charging event detected%",
+    "%Charging data fetched%",
+    "%ChargingState.%",
+    "%Vehicle health fetched%",
+    "%Vehicle info fetched%",
+    "%Vehicle status fetched%",
+    "%Vehicle positions fetched%",
+    "%Vehicle position found%",
+)
+
 
 async def ordinal(n):
     if 11 <= n % 100 <= 13:
@@ -408,19 +422,28 @@ async def root(
 @app.api_route("/health/rawlogs/age", methods=["GET", "HEAD"])
 async def latest_rawlog_age(threshold_seconds: int | None = Query(default=None, ge=0)):
     """
-    Report the age of the latest imported event in skoda.rawlogs.
+    Report the age of the latest vehicle telemetry event in skoda.rawlogs.
+
+    This endpoint now distinguishes between:
+    1. General rawlogs (any log entry from the service)
+    2. Vehicle telemetry logs (logs indicating actual car communication)
+
+    The alerting logic is based on vehicle telemetry age, ensuring that even if
+    the service is running and logging, we'll alert if the car isn't sending data.
 
     Query params:
       - threshold_seconds: optional non-negative integer. If provided and the
-        latest event age exceeds this threshold, respond with HTTP 503.
+        latest vehicle event age exceeds this threshold, respond with HTTP 503.
 
     Responses:
-      200 JSON: { "latest_timestamp": "...", "age_seconds": 123, "threshold_seconds": 60, "within_threshold": true }
+      200 JSON: includes both general and vehicle log ages
       404 JSON: when no rawlogs are present yet
       500 JSON: on database error or timestamp parse error
-      503 JSON: when threshold_seconds is provided and age exceeds the threshold
+      503 JSON: when vehicle logs are missing or threshold is exceeded
     """
     conn, cur = await db_connect(my_logger)
+
+    # First, check if we have any rawlogs at all
     try:
         cur.execute("SELECT MAX(log_timestamp) FROM skoda.rawlogs")
         row = cur.fetchone()
@@ -430,8 +453,8 @@ async def latest_rawlog_age(threshold_seconds: int | None = Query(default=None, 
             status_code=500, content={"error": "database error fetching rawlogs"}
         )
 
-    latest = row[0] if row else None
-    if latest is None:
+    latest_general = row[0] if row else None
+    if latest_general is None:
         return JSONResponse(
             status_code=404,
             content={
@@ -439,50 +462,99 @@ async def latest_rawlog_age(threshold_seconds: int | None = Query(default=None, 
                 "age_seconds": None,
                 "threshold_seconds": threshold_seconds,
                 "within_threshold": None,
+                "latest_general_timestamp": None,
+                "general_age_seconds": None,
+                "vehicle_log_patterns": list(VEHICLE_LOG_LIKE_PATTERNS),
                 "message": "no rawlogs found",
             },
         )
 
-    # Coerce to aware UTC datetime
+    # Parse general timestamp
     try:
-        if isinstance(latest, datetime.datetime):
-            ts = latest
+        if isinstance(latest_general, datetime.datetime):
+            general_ts = latest_general
         else:
-            ts = datetime.datetime.fromisoformat(str(latest))
+            general_ts = datetime.datetime.fromisoformat(str(latest_general))
+        if general_ts.tzinfo is None:
+            general_ts = general_ts.replace(tzinfo=datetime.timezone.utc)
     except Exception:
-        # Fallback: stringify
         return JSONResponse(
             status_code=500,
             content={
                 "error": "could not parse latest rawlog timestamp",
-                "raw": str(latest),
+                "raw": str(latest_general),
             },
         )
 
-    if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=datetime.timezone.utc)
+    # Now check for vehicle telemetry logs specifically
+    placeholders = " OR ".join(["log_message LIKE ?"] * len(VEHICLE_LOG_LIKE_PATTERNS))
+    vehicle_query = f"SELECT MAX(log_timestamp) FROM skoda.rawlogs WHERE {placeholders}"
 
+    try:
+        cur.execute(vehicle_query, VEHICLE_LOG_LIKE_PATTERNS)
+        row = cur.fetchone()
+    except Exception as e:
+        my_logger.error("Error fetching vehicle rawlog timestamp: %s", e)
+        return JSONResponse(
+            status_code=500,
+            content={"error": "database error fetching vehicle rawlogs"},
+        )
+
+    vehicle_latest = row[0] if row else None
     now_utc = datetime.datetime.now(datetime.timezone.utc)
-    age_seconds = max(0, int((now_utc - ts).total_seconds()))
+    general_age = max(0, int((now_utc - general_ts).total_seconds()))
 
-    # Threshold handling
-    if threshold_seconds is not None and age_seconds > threshold_seconds:
+    # CRITICAL: If we have general logs but no vehicle logs, alert!
+    if vehicle_latest is None:
         return JSONResponse(
             status_code=503,
             content={
-                "latest_timestamp": ts.isoformat(),
-                "age_seconds": age_seconds,
+                "latest_timestamp": None,
+                "age_seconds": None,
                 "threshold_seconds": threshold_seconds,
-                "within_threshold": False,
-                "message": "out of bounds",
+                "within_threshold": False if threshold_seconds is not None else None,
+                "latest_general_timestamp": general_ts.isoformat(),
+                "general_age_seconds": general_age,
+                "vehicle_log_patterns": list(VEHICLE_LOG_LIKE_PATTERNS),
+                "message": "no vehicle telemetry logs found",
             },
         )
 
-    return {
-        "latest_timestamp": ts.isoformat(),
-        "age_seconds": age_seconds,
+    # Parse vehicle timestamp
+    try:
+        if isinstance(vehicle_latest, datetime.datetime):
+            vehicle_ts = vehicle_latest
+        else:
+            vehicle_ts = datetime.datetime.fromisoformat(str(vehicle_latest))
+        if vehicle_ts.tzinfo is None:
+            vehicle_ts = vehicle_ts.replace(tzinfo=datetime.timezone.utc)
+    except Exception:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "could not parse latest vehicle rawlog timestamp",
+                "raw": str(vehicle_latest),
+            },
+        )
+
+    vehicle_age = max(0, int((now_utc - vehicle_ts).total_seconds()))
+    within_threshold = (
+        None if threshold_seconds is None else vehicle_age <= threshold_seconds
+    )
+
+    response_body = {
+        "latest_timestamp": vehicle_ts.isoformat(),
+        "age_seconds": vehicle_age,
         "threshold_seconds": threshold_seconds,
-        "within_threshold": (
-            None if threshold_seconds is None else age_seconds <= threshold_seconds
-        ),
+        "within_threshold": within_threshold,
+        "latest_general_timestamp": general_ts.isoformat(),
+        "general_age_seconds": general_age,
+        "vehicle_log_patterns": list(VEHICLE_LOG_LIKE_PATTERNS),
     }
+
+    # Threshold handling - alert if vehicle logs are too old
+    if threshold_seconds is not None and vehicle_age > threshold_seconds:
+        response_body["message"] = "out of bounds"
+        return JSONResponse(status_code=503, content=response_body)
+
+    return response_body

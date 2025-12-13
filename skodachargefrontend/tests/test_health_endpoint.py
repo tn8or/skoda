@@ -46,19 +46,43 @@ def load_frontend_with_health_stubs():
     _mock_db_state = {}
 
     class MockCursor:
+        def __init__(self):
+            self._last_query_type = None
+
         def execute(self, query, *args, **kwargs):
+            # Determine if this is a vehicle-specific or general query
             if "MAX(log_timestamp)" in query:
-                # Use the mock state to return appropriate data
-                if _mock_db_state.get("raise_exception"):
-                    raise Exception("Database error")
-                return None
+                if "log_message LIKE" in query:
+                    self._last_query_type = "vehicle"
+                    if _mock_db_state.get("vehicle_raise_exception"):
+                        raise Exception("Database error on vehicle query")
+                else:
+                    self._last_query_type = "general"
+                    if _mock_db_state.get("raise_exception"):
+                        raise Exception("Database error on general query")
+            else:
+                self._last_query_type = None
+            return None
 
         def fetchone(self):
-            if _mock_db_state.get("no_data"):
-                return None
-            if _mock_db_state.get("return_timestamp"):
-                return [_mock_db_state["return_timestamp"]]
-            return [datetime.datetime.now(datetime.timezone.utc)]
+            if self._last_query_type == "vehicle":
+                # Return vehicle-specific data
+                if _mock_db_state.get("vehicle_no_data"):
+                    return None
+                if _mock_db_state.get("vehicle_return_timestamp"):
+                    return [_mock_db_state["vehicle_return_timestamp"]]
+                # Default: return same as general if not specified
+                if _mock_db_state.get("return_timestamp"):
+                    return [_mock_db_state["return_timestamp"]]
+                return [datetime.datetime.now(datetime.timezone.utc)]
+            elif self._last_query_type == "general":
+                # Return general data
+                if _mock_db_state.get("no_data"):
+                    return None
+                if _mock_db_state.get("return_timestamp"):
+                    return [_mock_db_state["return_timestamp"]]
+                return [datetime.datetime.now(datetime.timezone.utc)]
+            return None
 
     class MockConn:
         auto_reconnect = True
@@ -113,29 +137,30 @@ class TestHealthRawlogsAge:
     async def test_no_rawlogs_found(self):
         """Test when no rawlogs are found in the database."""
         mod, commons = load_frontend_with_health_stubs()
-        
+
         # Configure mock to return no data
         commons._mock_db_state["no_data"] = True
-        
+
         response = await mod.latest_rawlog_age(threshold_seconds=60)
-        
+
         assert response.status_code == 404
         content = json.loads(response.body)
         assert content["message"] == "no rawlogs found"
         assert content["latest_timestamp"] is None
         assert content["age_seconds"] is None
         assert content["threshold_seconds"] == 60
+        assert "vehicle_log_patterns" in content
 
     @pytest.mark.asyncio
     async def test_database_error(self):
         """Test when database query fails."""
         mod, commons = load_frontend_with_health_stubs()
-        
+
         # Configure mock to raise exception
         commons._mock_db_state["raise_exception"] = True
-        
+
         response = await mod.latest_rawlog_age(threshold_seconds=60)
-        
+
         assert response.status_code == 500
         content = json.loads(response.body)
         assert "error" in content
@@ -145,13 +170,15 @@ class TestHealthRawlogsAge:
     async def test_within_threshold(self):
         """Test when latest event is within threshold."""
         mod, commons = load_frontend_with_health_stubs()
-        
+
         # Configure mock to return recent timestamp (within threshold)
-        recent_time = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=30)
+        recent_time = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+            seconds=30
+        )
         commons._mock_db_state["return_timestamp"] = recent_time
-        
+
         response = await mod.latest_rawlog_age(threshold_seconds=60)
-        
+
         # Should return 200 (normal dict response, not JSONResponse)
         assert hasattr(response, "keys")  # It's a dict
         assert response["within_threshold"] is True
@@ -162,13 +189,15 @@ class TestHealthRawlogsAge:
     async def test_exceeds_threshold_out_of_bounds(self):
         """Test when latest event exceeds threshold - should return 'out of bounds' message."""
         mod, commons = load_frontend_with_health_stubs()
-        
+
         # Configure mock to return old timestamp (exceeds threshold)
-        old_time = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=120)
+        old_time = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+            seconds=120
+        )
         commons._mock_db_state["return_timestamp"] = old_time
-        
+
         response = await mod.latest_rawlog_age(threshold_seconds=60)
-        
+
         assert response.status_code == 503
         content = json.loads(response.body)
         assert content["message"] == "out of bounds"
@@ -180,13 +209,15 @@ class TestHealthRawlogsAge:
     async def test_no_threshold_provided(self):
         """Test when no threshold is provided."""
         mod, commons = load_frontend_with_health_stubs()
-        
+
         # Configure mock to return a timestamp
-        some_time = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=30)
+        some_time = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+            seconds=30
+        )
         commons._mock_db_state["return_timestamp"] = some_time
-        
+
         response = await mod.latest_rawlog_age(threshold_seconds=None)
-        
+
         # Should return 200 (normal dict response)
         assert hasattr(response, "keys")  # It's a dict
         assert response["within_threshold"] is None
@@ -197,17 +228,69 @@ class TestHealthRawlogsAge:
     async def test_exactly_at_threshold(self):
         """Test when latest event is exactly at the threshold."""
         mod, commons = load_frontend_with_health_stubs()
-        
+
         # Configure mock to return timestamp exactly at threshold
-        threshold_time = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=60)
+        threshold_time = datetime.datetime.now(
+            datetime.timezone.utc
+        ) - datetime.timedelta(seconds=60)
         commons._mock_db_state["return_timestamp"] = threshold_time
-        
+
         response = await mod.latest_rawlog_age(threshold_seconds=60)
-        
+
         # Should return 200 since age_seconds <= threshold_seconds
         assert hasattr(response, "keys")  # It's a dict
         assert response["within_threshold"] is True
         assert response["threshold_seconds"] == 60
+
+    @pytest.mark.asyncio
+    async def test_no_vehicle_telemetry_logs(self):
+        """Test when general logs exist but no vehicle telemetry logs - should alert."""
+        mod, commons = load_frontend_with_health_stubs()
+
+        # Configure mock: general logs exist, but no vehicle logs
+        general_time = datetime.datetime.now(
+            datetime.timezone.utc
+        ) - datetime.timedelta(seconds=30)
+        commons._mock_db_state["return_timestamp"] = general_time
+        commons._mock_db_state["vehicle_no_data"] = True
+
+        response = await mod.latest_rawlog_age(threshold_seconds=60)
+
+        # Should return 503 because vehicle logs are missing
+        assert response.status_code == 503
+        content = json.loads(response.body)
+        assert content["message"] == "no vehicle telemetry logs found"
+        assert content["latest_timestamp"] is None
+        assert content["latest_general_timestamp"] is not None
+        assert "vehicle_log_patterns" in content
+        assert len(content["vehicle_log_patterns"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_vehicle_logs_older_than_general(self):
+        """Test when vehicle logs are significantly older than general logs - should alert."""
+        mod, commons = load_frontend_with_health_stubs()
+
+        # General logs are recent (service is running)
+        general_time = datetime.datetime.now(
+            datetime.timezone.utc
+        ) - datetime.timedelta(seconds=30)
+        # Vehicle logs are very old (car not communicating for a month)
+        vehicle_time = datetime.datetime.now(
+            datetime.timezone.utc
+        ) - datetime.timedelta(days=30)
+
+        commons._mock_db_state["return_timestamp"] = general_time
+        commons._mock_db_state["vehicle_return_timestamp"] = vehicle_time
+
+        response = await mod.latest_rawlog_age(threshold_seconds=3600)
+
+        # Should return 503 because vehicle logs exceed threshold
+        assert response.status_code == 503
+        content = json.loads(response.body)
+        assert content["message"] == "out of bounds"
+        assert content["age_seconds"] > 3600
+        assert content["general_age_seconds"] < 3600
+        assert content["within_threshold"] is False
 
 
 class TestHealthEndpointHTTPMethods:
@@ -216,21 +299,25 @@ class TestHealthEndpointHTTPMethods:
     def test_endpoint_supports_get_and_head_methods(self):
         """Test that the health endpoint is configured to support both GET and HEAD methods."""
         import re
-        
+
         # Read the source file to verify the route definition
         here = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         frontend_file = os.path.join(here, "skodachargefrontend.py")
-        
-        with open(frontend_file, 'r') as f:
+
+        with open(frontend_file, "r") as f:
             content = f.read()
-        
+
         # Verify the health endpoint supports both GET and HEAD methods
         health_route_pattern = r'@app\.api_route\([^)]*"/health/rawlogs/age"[^)]*methods=\[.*"GET".*"HEAD".*\][^)]*\)'
         match = re.search(health_route_pattern, content)
-        
-        assert match is not None, "Health endpoint should be configured with @app.api_route supporting GET and HEAD"
-        
+
+        assert (
+            match is not None
+        ), "Health endpoint should be configured with @app.api_route supporting GET and HEAD"
+
         # Verify both methods are present
         route_def = match.group(0)
         assert '"GET"' in route_def, "Health endpoint should support GET method"
-        assert '"HEAD"' in route_def, "Health endpoint should support HEAD method for UptimeRobot compatibility"
+        assert (
+            '"HEAD"' in route_def
+        ), "Health endpoint should support HEAD method for UptimeRobot compatibility"
