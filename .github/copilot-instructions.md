@@ -178,16 +178,27 @@ pip-compile --upgrade --output-file=skodaimporter/requirements.txt skodaimporter
 ## CI/CD and GitHub Actions
 
 ### Workflow Files
-- **ci.yml**: Runs tests on all services with Python 3.13
-- **ghcr-image.yml**: Builds and pushes Docker images to GitHub Container Registry
-- **pip-audit.yml**: Security scanning of dependencies
-- **update-deps.yml**: Automated dependency updates
+- **ci-cd.yml**: Combined CI/CD pipeline that includes:
+  - Testing all services with Python 3.13
+  - Security scanning with pip-audit
+  - Building and pushing Docker images to GitHub Container Registry
+  - Deployment webhooks for test and production environments
+- **update-deps.yml**: Automated dependency updates using pip-compile
 
 ### Build Pipeline
 1. Tests run in parallel for all services
-2. Docker images built only after successful tests
-3. Multi-platform builds (linux/amd64, linux/arm64)
-4. Automatic deployment webhook after successful builds
+2. Security audit runs with pip-audit for each service
+3. Docker images built only after successful tests
+4. Multi-platform builds (linux/amd64, linux/arm64)
+5. Test images built for PRs and non-main branches
+6. Production images built and deployed only from main branch
+7. Automatic deployment webhooks after successful builds
+
+### Security
+Refer to [SECURITY.md](../SECURITY.md) for details on:
+- GitHub Actions security model
+- Workflow isolation and privilege separation
+- Branch protection and security controls
 
 ## Troubleshooting
 
