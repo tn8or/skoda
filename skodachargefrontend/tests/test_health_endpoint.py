@@ -51,15 +51,15 @@ def load_frontend_with_health_stubs():
 
         def execute(self, query, *args, **kwargs):
             # Determine if this is a vehicle-specific or general query
-            if "MAX(log_timestamp)" in query:
-                if "log_message LIKE" in query:
-                    self._last_query_type = "vehicle"
-                    if _mock_db_state.get("vehicle_raise_exception"):
-                        raise Exception("Database error on vehicle query")
-                else:
-                    self._last_query_type = "general"
-                    if _mock_db_state.get("raise_exception"):
-                        raise Exception("Database error on general query")
+            if "log_message LIKE" in query:
+                # Vehicle-specific lookup (supports both MAX and ORDER BY ... LIMIT 1 forms)
+                self._last_query_type = "vehicle"
+                if _mock_db_state.get("vehicle_raise_exception"):
+                    raise Exception("Database error on vehicle query")
+            elif "MAX(log_timestamp)" in query:
+                self._last_query_type = "general"
+                if _mock_db_state.get("raise_exception"):
+                    raise Exception("Database error on general query")
             else:
                 self._last_query_type = None
             return None

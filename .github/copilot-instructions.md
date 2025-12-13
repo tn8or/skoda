@@ -42,7 +42,11 @@ Always reference these instructions first and fallback to search or bash command
 - **View logs**: `docker-compose logs -f SERVICE_NAME`
 - **Stop services**: `docker-compose down`
 
-## Validation
+## Local Validation Policy
+- Before marking any task complete, always:
+  1) Run pytest from the repo root (or the affected service) inside the Python 3.13 venv.
+  2) Rebuild and redeploy containers with `./compose.sh up` (do not cancel; expected <1 minute here).
+- Only skip either step if the user explicitly says to skip.
 
 ### Mandatory Test Requirements
 - **ALWAYS run tests before committing**: Each service has mandatory coverage requirements
