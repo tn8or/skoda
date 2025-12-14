@@ -1,5 +1,6 @@
 import datetime
 import html
+import json
 import os
 from zoneinfo import ZoneInfo
 
@@ -7,7 +8,10 @@ from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 from helpers import (
     compute_daily_totals_home,
+    compute_monthly_average_efficiency,
+    compute_normalized_efficiency,
     compute_session_summary,
+    filter_efficiency_data,
     group_sessions_by_mileage,
 )
 
@@ -101,11 +105,11 @@ async def root(
 
     build_date_local = _fmt_build_date(build_date)
     conn, cur = await db_connect(my_logger)
-    start_date = datetime.date(year, month, 1)
-    if month == 12:
-        end_date = datetime.date(year + 1, 1, 1)
-    else:
-        end_date = datetime.date(year, month + 1, 1)
+
+    # Fetch annual data for the entire year (needed for monthly averages chart)
+    annual_start_date = datetime.date(year, 1, 1)
+    annual_end_date = datetime.date(year + 1, 1, 1)
+
     # Fetch raw hourly rows; we'll group into sessions (plug-in -> unplug) in Python
     query = (
         "SELECT log_timestamp, start_at, stop_at, amount, price, charged_range, "
@@ -115,12 +119,19 @@ async def root(
         "ORDER BY mileage, start_at, log_timestamp"
     )
     my_logger.debug(
-        "Executing session source query with start_date: %s, end_date: %s",
-        start_date,
-        end_date,
+        "Executing annual session source query with start_date: %s, end_date: %s",
+        annual_start_date,
+        annual_end_date,
     )
-    cur.execute(query, (start_date, end_date))
-    rows = cur.fetchall() or []
+    cur.execute(query, (annual_start_date, annual_end_date))
+    annual_rows = cur.fetchall() or []
+
+    # For the monthly view table, filter to the requested month
+    month_start_date = datetime.date(year, month, 1)
+    if month == 12:
+        month_end_date = datetime.date(year + 1, 1, 1)
+    else:
+        month_end_date = datetime.date(year, month + 1, 1)
 
     # Normalize to tuples of python types
     def _to_dt(v):
@@ -130,10 +141,11 @@ async def root(
             return v
         try:
             return datetime.datetime.fromisoformat(str(v))
-        except Exception:
+        except (ValueError, TypeError):
             return None
 
-    hourly = [
+    # Convert all annual data to hourly format
+    annual_hourly = [
         {
             "log_timestamp": _to_dt(r[0]),
             "start_at": _to_dt(r[1]),
@@ -146,11 +158,67 @@ async def root(
             "position": r[8] or "Unknown",
             "soc": float(r[9]) if r[9] is not None else None,
         }
-        for r in rows
+        for r in annual_rows
+    ]
+
+    # Filter annual hourly data to current month for the table
+    hourly = [
+        h
+        for h in annual_hourly
+        if h["stop_at"] and month_start_date <= h["stop_at"].date() < month_end_date
     ]
 
     # Group hourly rows to sessions by mileage
+    # Sessions are identified by the car's parking location (mileage value).
+    # The car may charge in multiple cycles during one parking session (e.g., overnight),
+    # and we group all cycles at the same mileage into one "session".
     sessions = group_sessions_by_mileage(hourly)
+
+    # Compute annual efficiency data for the yearly chart
+    annual_sessions = group_sessions_by_mileage(annual_hourly)
+    annual_efficiency_data = compute_normalized_efficiency(annual_sessions)
+
+    # Build monthly chart data for the current month: show all individual charges
+    #
+    # Data filtering constraints (applied to all charges):
+    #  - Range must be 150-550 km (normalized to 100% charge)
+    #  - SOC gain must be >= 20%
+    #
+    # Two efficiency metrics are displayed:
+    #  1. Range-based (blue): The car's reported 100% range after the charge.
+    #     If car reports 400km at 80% SOC, then 100% range = 500km.
+    #     Formula: (charged_range - start_range) / soc_gain * 100
+    #
+    #  2. Actual/mileage-based (green): Efficiency calculated from miles driven.
+    #     Measures distance driven since the previous charge, then normalizes to 100%.
+    #     Formula: (mileage_driven_since_last_charge) / soc_gain * 100
+    #     Only calculated if we can determine mileage between charges.
+    monthly_efficiency_data = compute_normalized_efficiency(sessions)
+    filtered_monthly = filter_efficiency_data(monthly_efficiency_data)
+
+    # Sort by date for chart display
+    filtered_monthly.sort(
+        key=lambda x: x["stop_at"] if x["stop_at"] else datetime.datetime.min
+    )
+
+    # Build chart arrays with charge index as x-axis label
+    monthly_chart_labels = [f"Charge {i+1}" for i in range(len(filtered_monthly))]
+    monthly_estimated_points = [
+        (
+            round(c.get("estimated_efficiency", 0), 2)
+            if c.get("estimated_efficiency") is not None
+            else None
+        )
+        for c in filtered_monthly
+    ]
+    monthly_actual_points = [
+        (
+            round(c.get("actual_efficiency", 0), 2)
+            if c.get("actual_efficiency") is not None
+            else None
+        )
+        for c in filtered_monthly
+    ]
 
     prev_month = month - 1
     prev_year = year
@@ -185,6 +253,9 @@ async def root(
                         <a href="/" class="text-blue-400 hover:underline">Home</a>
                         <span class="mx-2 text-white">|</span>
                         <a href="/?year={escape_html(next_year)}&month={escape_html(next_month)}" class="text-blue-400 hover:underline">Next Month »</a>
+                    </div>
+                    <div class="text-center mt-4">
+                        <a href="/efficiency?year={escape_html(year)}" class="text-blue-400 hover:underline">View Year Efficiency Chart</a>
                     </div>
                     <div class="text-center mt-8 text-gray-400 text-sm">
                         Build:
@@ -393,8 +464,85 @@ async def root(
                     <a href=\"/\" class=\"text-blue-400 hover:underline\">Home</a>
                     <span class=\"mx-2 text-white\">|</span>
                     <a href=\"/?year={escape_html(next_year)}&month={escape_html(next_month)}\" class=\"text-blue-400 hover:underline\">Next Month »</a>
+                    <span class=\"mx-2 text-white\">|</span>
+                    <a href=\"/efficiency?year={escape_html(year)}\" class=\"text-blue-400 hover:underline\">Yearly Efficiency</a>
                 </div>
-                <div class=\"text-center mt-4 text-gray-400 text-sm\">
+
+                <!-- Monthly Efficiency Chart -->
+                <div class=\"mt-12\">
+                    <h2 class=\"text-2xl font-bold text-white mb-4 text-center\">Monthly Efficiency</h2>
+                    <div style=\"position: relative; width: 95%; max-width: 900px; height: 400px; margin: 20px auto;\">
+                        <canvas id=\"monthlyEfficiencyChart\"></canvas>
+                    </div>
+                    <script src=\"https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js\"><\/script>
+                    <script>
+                        document.addEventListener('DOMContentLoaded', function() {{
+                            const monthlyLabels = {json.dumps(monthly_chart_labels)};
+                            const monthlyEstimated = {json.dumps(monthly_estimated_points)};
+                            const monthlyActual = {json.dumps(monthly_actual_points)};
+
+                            const monthlyCtx = document.getElementById('monthlyEfficiencyChart');
+                            if (monthlyCtx && window.Chart) {{
+                                new Chart(monthlyCtx, {{
+                                    type: 'line',
+                                    data: {{
+                                        labels: monthlyLabels,
+                                        datasets: [
+                                            {{
+                                                label: 'Range-Based Efficiency (km @ 100%)',
+                                                data: monthlyEstimated,
+                                                borderColor: 'rgb(100, 200, 255)',
+                                                backgroundColor: 'rgba(100, 200, 255, 0.05)',
+                                                borderWidth: 2,
+                                                fill: true,
+                                                tension: 0.3,
+                                                pointRadius: 4,
+                                                pointBackgroundColor: 'rgb(100, 200, 255)'
+                                            }},
+                                            {{
+                                                label: 'Mileage-Based Efficiency (km @ 100%)',
+                                                data: monthlyActual,
+                                                borderColor: 'rgb(144, 238, 144)',
+                                                backgroundColor: 'rgba(144, 238, 144, 0.05)',
+                                                borderWidth: 2,
+                                                fill: true,
+                                                tension: 0.3,
+                                                pointRadius: 4,
+                                                pointBackgroundColor: 'rgb(144, 238, 144)'
+                                            }}
+                                        ]
+                                    }},
+                                    options: {{
+                                        responsive: true,
+                                        maintainAspectRatio: false,
+                                        interaction: {{ mode: 'index', intersect: false }},
+                                        plugins: {{
+                                            legend: {{
+                                                labels: {{ color: 'rgb(255, 255, 255)', font: {{ size: 12 }}, padding: 15 }}
+                                            }}
+                                        }},
+                                        scales: {{
+                                            y: {{
+                                                beginAtZero: true,
+                                                max: 600,
+                                                ticks: {{ color: 'rgb(255, 255, 255)' }},
+                                                grid: {{ color: 'rgba(255, 255, 255, 0.1)' }}
+                                            }},
+                                            x: {{
+                                                ticks: {{ color: 'rgb(255, 255, 255)', maxRotation: 45, minRotation: 45 }},
+                                                grid: {{ color: 'rgba(255, 255, 255, 0.1)' }}
+                                            }}
+                                        }}
+                                    }}
+                                }});
+                            }}
+                        }});
+                    <\/script>
+                </div>
+
+                <div class="text-center mt-4">
+                    <a href="/efficiency?year={escape_html(year)}" class="text-blue-400 hover:underline">View Year Efficiency Chart</a>
+                </div>                <div class=\"text-center mt-4 text-gray-400 text-sm\">
                     Build:
                     {escape_html(git_tag) or 'untagged'}
                     {f'<a class=\"underline\" href=\"https://github.com/tn8or/skoda/commit/{escape_html(git_commit)}\" target=\"_blank\" rel=\"noopener noreferrer\">{escape_html(short_commit)}</a>' if git_commit else ''}
@@ -565,3 +713,321 @@ async def latest_rawlog_age(threshold_seconds: int | None = Query(default=None, 
         return JSONResponse(status_code=503, content=response_body)
 
     return response_body
+
+
+@app.api_route("/efficiency/api/yearly", methods=["GET"])
+async def efficiency_yearly_data(
+    year: int = Query(datetime.datetime.now().year, ge=2025, le=2027),
+):
+    """
+    Return normalized efficiency data for all charges in a given year as JSON.
+
+    Response is a list of charge sessions with:
+      - stop_at: when the charge ended (ISO datetime)
+      - efficiency: km of range per 100% charge (normalized), or null if not available
+      - range_gain: km gained during this charge
+      - soc_gain: battery % gained during this charge
+      - charged_range: range at end of charge
+      - start_range: range at start of charge
+      - start_soc: battery % at start
+      - end_soc: battery % at end
+    """
+    conn, cur = await db_connect(my_logger)
+
+    start_date = datetime.date(year, 1, 1)
+    if year == 2027:
+        end_date = datetime.date(year + 1, 1, 1)
+    else:
+        end_date = datetime.date(year + 1, 1, 1)
+
+    # Fetch all charge_hours rows for the year
+    query = (
+        "SELECT log_timestamp, start_at, stop_at, amount, price, charged_range, "
+        "start_range, mileage, position, soc "
+        "FROM skoda.charge_hours "
+        "WHERE stop_at >= %s AND stop_at < %s "
+        "ORDER BY mileage, start_at, log_timestamp"
+    )
+    cur.execute(query, (start_date, end_date))
+    rows = cur.fetchall() or []
+
+    # Normalize to dicts
+    def _to_dt(v):
+        if v is None:
+            return None
+        if isinstance(v, datetime.datetime):
+            return v
+        try:
+            return datetime.datetime.fromisoformat(str(v))
+        except Exception:
+            return None
+
+    hourly = [
+        {
+            "log_timestamp": _to_dt(r[0]),
+            "start_at": _to_dt(r[1]),
+            "stop_at": _to_dt(r[2]),
+            "amount": float(r[3]) if r[3] is not None else 0.0,
+            "price": float(r[4]) if r[4] is not None else 0.0,
+            "charged_range": float(r[5]) if r[5] is not None else None,
+            "start_range": float(r[6]) if r[6] is not None else None,
+            "mileage": r[7],
+            "position": r[8] or "Unknown",
+            "soc": float(r[9]) if r[9] is not None else None,
+        }
+        for r in rows
+    ]
+
+    # Group by session
+    sessions = group_sessions_by_mileage(hourly)
+
+    # Compute efficiency for each session
+    efficiency_data = compute_normalized_efficiency(sessions)
+
+    # Convert datetime objects to ISO strings for JSON serialization
+    result = [
+        {
+            **eff,
+            "stop_at": eff["stop_at"].isoformat() if eff["stop_at"] else None,
+        }
+        for eff in efficiency_data
+    ]
+
+    return result
+
+
+@app.api_route("/efficiency", methods=["GET", "HEAD"], response_class=HTMLResponse)
+async def efficiency_chart(
+    year: int = Query(datetime.datetime.now().year, ge=2025, le=2027),
+):
+    """
+    Display a chart of range efficiency normalized to 100% charge over a full year.
+
+    Shows km of range gained per 1% battery increase, normalized to a full charge.
+    """
+    git_commit = os.environ.get("GIT_COMMIT", "")
+    git_tag = os.environ.get("GIT_TAG", "")
+    build_date = os.environ.get("BUILD_DATE", "")
+    short_commit = git_commit[:7] if git_commit else ""
+
+    def _fmt_build_date(s: str) -> str:
+        if not s:
+            return ""
+        try:
+            iso = s
+            if iso.endswith("Z"):
+                iso = iso[:-1] + "+00:00"
+            dt = datetime.datetime.fromisoformat(iso)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=datetime.timezone.utc)
+            return dt.astimezone(TZ_CPH).strftime("%Y-%m-%d %H:%M:%S %Z")
+        except Exception:
+            return s
+
+    build_date_local = _fmt_build_date(build_date)
+
+    # Fetch efficiency data
+    conn, cur = await db_connect(my_logger)
+
+    start_date = datetime.date(year, 1, 1)
+    end_date = datetime.date(year + 1, 1, 1)
+
+    query = (
+        "SELECT log_timestamp, start_at, stop_at, amount, price, charged_range, "
+        "start_range, mileage, position, soc "
+        "FROM skoda.charge_hours "
+        "WHERE stop_at >= %s AND stop_at < %s "
+        "ORDER BY mileage, start_at, log_timestamp"
+    )
+    cur.execute(query, (start_date, end_date))
+    rows = cur.fetchall() or []
+
+    def _to_dt(v):
+        if v is None:
+            return None
+        if isinstance(v, datetime.datetime):
+            return v
+        try:
+            return datetime.datetime.fromisoformat(str(v))
+        except Exception:
+            return None
+
+    hourly = [
+        {
+            "log_timestamp": _to_dt(r[0]),
+            "start_at": _to_dt(r[1]),
+            "stop_at": _to_dt(r[2]),
+            "amount": float(r[3]) if r[3] is not None else 0.0,
+            "price": float(r[4]) if r[4] is not None else 0.0,
+            "charged_range": float(r[5]) if r[5] is not None else None,
+            "start_range": float(r[6]) if r[6] is not None else None,
+            "mileage": r[7],
+            "position": r[8] or "Unknown",
+            "soc": float(r[9]) if r[9] is not None else None,
+        }
+        for r in rows
+    ]
+
+    sessions = group_sessions_by_mileage(hourly)
+    efficiency_data = compute_normalized_efficiency(sessions)
+
+    # Build monthly averages for all 12 months of the year
+    labels = []
+    estimated_data_points = []
+    actual_data_points = []
+
+    for month in range(1, 13):
+        month_avg = compute_monthly_average_efficiency(efficiency_data, year, month)
+        month_name = datetime.datetime(year, month, 1).strftime("%b")
+        labels.append(month_name)
+        estimated_data_points.append(month_avg.get("estimated_efficiency_avg"))
+        actual_data_points.append(month_avg.get("actual_efficiency_avg"))
+
+    # Build HTML with Chart.js - dual graphs for estimated and actual efficiency
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Range Efficiency - {escape_html(year)}</title>
+        <link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
+        <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+        <style>
+            .chart-container {{
+                position: relative;
+                width: 95%;
+                max-width: 1000px;
+                height: 500px;
+                margin: 20px auto;
+            }}
+        </style>
+    </head>
+    <body class="bg-black">
+        <section class="bg-black">
+            <div class="container px-5 py-12 mx-auto lg:px-20">
+                <div class="flex flex-col flex-wrap text-white">
+                    <h1 class="mb-4 text-3xl font-medium text-white">
+                        Monthly Average Range Efficiency - {escape_html(year)}
+                    </h1>
+                    <p class="mb-2 text-gray-400">
+                        <strong>Blue Line (Range-Based):</strong> Monthly average of car's predicted range gain per 100% battery charge.
+                    </p>
+                    <p class="mb-8 text-gray-400">
+                        <strong>Green Line (Mileage-Based):</strong> Monthly average real-world efficiency based on distance driven. Filtered: 150-550 km per 100% charge, minimum 20% SOC gain per charge.
+                    </p>
+                </div>
+
+                <div class="chart-container">
+                    <canvas id="efficiencyChart"></canvas>
+                </div>
+
+                <div class="text-center mt-8">
+                    <a href="/?year={escape_html(year)}&month=1" class="text-blue-400 hover:underline">« Back to Monthly View</a>
+                    <span class="mx-2 text-white">|</span>
+                    <a href="/" class="text-blue-400 hover:underline">Home</a>
+                </div>
+
+                <div class="text-center mt-4 text-gray-400 text-sm">
+                    Build:
+                    {escape_html(git_tag) or 'untagged'}
+                    {f'<a class="underline" href="https://github.com/tn8or/skoda/commit/{escape_html(git_commit)}" target="_blank" rel="noopener noreferrer">{escape_html(short_commit)}</a>' if git_commit else ''}
+                    {f'({escape_html(build_date_local)})' if build_date_local else ''}
+                    - <a class="underline" href="https://github.com/tn8or/skoda/" target="_blank" rel="noopener noreferrer">github.com/tn8or/skoda</a>
+                </div>
+            </div>
+        </section>
+
+        <script>
+            const labels = {json.dumps(labels)};
+            const estimatedDataPoints = {json.dumps(estimated_data_points)};
+            const actualDataPoints = {json.dumps(actual_data_points)};
+
+            const ctx = document.getElementById('efficiencyChart').getContext('2d');
+            const efficiencyChart = new Chart(ctx, {{
+                type: 'line',
+                data: {{
+                    labels: labels,
+                    datasets: [
+                        {{
+                            label: 'Range-Based Efficiency (km @ 100%)',
+                            data: estimatedDataPoints,
+                            borderColor: 'rgb(100, 200, 255)',
+                            backgroundColor: 'rgba(100, 200, 255, 0.05)',
+                            borderWidth: 2.5,
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 4,
+                            pointBackgroundColor: 'rgb(100, 200, 255)',
+                            pointHoverRadius: 6,
+                            pointBorderColor: 'rgb(255, 255, 255)',
+                            pointBorderWidth: 2,
+                        }},
+                        {{
+                            label: 'Mileage-Based Efficiency (km @ 100%)',
+                            data: actualDataPoints,
+                            borderColor: 'rgb(144, 238, 144)',
+                            backgroundColor: 'rgba(144, 238, 144, 0.05)',
+                            borderWidth: 2.5,
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 4,
+                            pointBackgroundColor: 'rgb(144, 238, 144)',
+                            pointHoverRadius: 6,
+                            pointBorderColor: 'rgb(255, 255, 255)',
+                            pointBorderWidth: 2,
+                        }}
+                    ]
+                }},
+                options: {{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {{
+                        mode: 'index',
+                        intersect: false,
+                    }},
+                    plugins: {{
+                        legend: {{
+                            labels: {{
+                                color: 'rgb(255, 255, 255)',
+                                font: {{
+                                    size: 12,
+                                }},
+                                usePointStyle: true,
+                                padding: 15,
+                            }},
+                        }},
+                    }},
+                    scales: {{
+                        y: {{
+                            beginAtZero: true,
+                            max: 600,
+                            ticks: {{
+                                color: 'rgb(255, 255, 255)',
+                            }},
+                            grid: {{
+                                color: 'rgba(255, 255, 255, 0.1)',
+                            }},
+                            title: {{
+                                display: true,
+                                text: 'Efficiency (km per 100% charge)',
+                                color: 'rgb(255, 255, 255)',
+                            }},
+                        }},
+                        x: {{
+                            ticks: {{
+                                color: 'rgb(255, 255, 255)',
+                                maxRotation: 45,
+                                minRotation: 45,
+                            }},
+                            grid: {{
+                                color: 'rgba(255, 255, 255, 0.1)',
+                            }},
+                        }},
+                    }},
+                }},
+            }});
+        </script>
+    </body>
+    </html>
+    """
+
+    return HTMLResponse(content=html_content)

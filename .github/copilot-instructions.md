@@ -143,8 +143,8 @@ cd skodachargefrontend && pytest -v  # 70% coverage required
 cd skodachargefinder && pytest -v    # 50% coverage required
 cd skodachargecollector && pytest -v # 85% coverage required
 
-# Build and start all services (NEVER CANCEL - 60-90 minutes, FAILS with network issues)
-./compose.sh up
+# Build and start all services
+./compose.sh up -d
 
 # Start only database for testing (WORKS - takes ~5 seconds)
 docker compose up -d mariadb

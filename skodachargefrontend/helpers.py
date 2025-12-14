@@ -76,6 +76,122 @@ def compute_daily_totals_home(
     return daily
 
 
+def compute_normalized_efficiency(
+    sessions: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    Compute range efficiency (both estimated and actual) for each charge session.
+
+    For each session, calculates:
+      estimated_efficiency = (range_gain / soc_gain) * 100
+      actual_efficiency = (mileage_driven_since_last_charge / soc_gain) * 100
+
+    This represents the km of range/actual-drive per 1% increase in battery,
+    normalized to what a full (100%) charge would provide.
+
+    Actual efficiency is calculated by comparing mileage at the start of this
+    charge to the end of the previous charge, reflecting real-world driving
+    efficiency between charging sessions.
+
+    Returns a list of dicts with:
+      - stop_at: session end timestamp
+      - estimated_efficiency: km of range per 100% charge (from car's estimate)
+      - actual_efficiency: km driven since last charge per 100% charge (from mileage)
+      - range_gain: range gained during charge
+      - mileage_driven: actual km driven since last charge
+      - soc_gain: SOC % gained during charge
+      - charged_range: range at end of charge
+      - start_range: range at start of charge
+      - start_soc: SOC at start
+      - end_soc: SOC at end
+    """
+    results: List[Dict[str, Any]] = []
+    prev_session_mileage = None
+
+    for sess in sessions:
+        rows = sess.get("rows", [])
+        if not rows:
+            continue
+
+        stop_at = sess.get("end")
+        rows_with_range = [
+            r
+            for r in rows
+            if r.get("charged_range") is not None and r.get("start_range") is not None
+        ]
+
+        if not rows_with_range:
+            continue
+
+        # Get range values from first and last rows with range data
+        first_row = rows_with_range[0]
+        last_row = rows_with_range[-1]
+
+        start_range = float(first_row.get("start_range", 0))
+        charged_range = float(last_row.get("charged_range", 0))
+        range_gain = charged_range - start_range
+
+        # Get SOC values
+        soc_vals = [float(r.get("soc")) for r in rows if r.get("soc") is not None]
+        if len(soc_vals) < 2:
+            # Need both start and end SOC for meaningful efficiency
+            continue
+
+        start_soc = soc_vals[0]
+        end_soc = soc_vals[-1]
+        soc_gain = end_soc - start_soc
+
+        # Get mileage at start and end of this charge session
+        mileage_vals = [r.get("mileage") for r in rows if r.get("mileage") is not None]
+        current_session_start_mileage = min(mileage_vals) if mileage_vals else None
+        current_session_end_mileage = max(mileage_vals) if mileage_vals else None
+
+        # Calculate mileage driven SINCE last charge (between sessions)
+        mileage_driven = 0
+        if (
+            prev_session_mileage is not None
+            and current_session_start_mileage is not None
+        ):
+            mileage_driven = current_session_start_mileage - prev_session_mileage
+            # Handle case where mileage wrapped around (shouldn't happen but be safe)
+            if mileage_driven < 0:
+                mileage_driven = 0
+
+        # Update for next iteration
+        if current_session_end_mileage is not None:
+            prev_session_mileage = current_session_end_mileage
+
+        # Calculate estimated efficiency (from car's range estimate)
+        estimated_efficiency = None
+        if soc_gain > 0 and range_gain > 0:
+            # Normalize to 100% charge: km per 1% * 100
+            estimated_efficiency = round((range_gain / soc_gain) * 100, 2)
+
+        # Calculate actual efficiency (from actual mileage driven since last charge)
+        # Only include if we have real mileage data from previous session
+        actual_efficiency = None
+        if soc_gain > 0 and mileage_driven > 0:
+            # Normalize to 100% charge: km per 1% * 100
+            actual_efficiency = round((mileage_driven / soc_gain) * 100, 2)
+
+        results.append(
+            {
+                "stop_at": stop_at,
+                "estimated_efficiency": estimated_efficiency,
+                "actual_efficiency": actual_efficiency,
+                "range_gain": round(range_gain, 2),
+                "mileage_driven": mileage_driven,
+                "soc_gain": round(soc_gain, 2),
+                "charged_range": round(charged_range, 2),
+                "start_range": round(start_range, 2),
+                "start_soc": round(start_soc, 2),
+                "end_soc": round(end_soc, 2),
+            }
+        )
+
+    return results
+
+
 def compute_footer_metrics(sessions: List[Dict[str, Any]]) -> Dict[str, float]:
     """
     Compute footer metrics:
@@ -120,4 +236,84 @@ def compute_footer_metrics(sessions: List[Dict[str, Any]]) -> Dict[str, float]:
         "total_amount": round(total_amount, 2),
         "estimated_km_per_kwh": estimated,
         "actual_km_per_kwh": actual,
+    }
+
+
+def filter_efficiency_data(
+    efficiency_data: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    Filter efficiency data by outlier rules:
+      - Efficiency values must be between 150 and 550 km per 100% charge
+      - SOC gain must be at least 20%
+
+    Returns filtered list maintaining order.
+    """
+    filtered = []
+    for eff in efficiency_data:
+        est_eff = eff.get("estimated_efficiency")
+        soc_gain = eff.get("soc_gain", 0)
+
+        if est_eff is not None and 150 <= est_eff <= 550 and soc_gain >= 20:
+            filtered.append(eff)
+
+    return filtered
+
+
+def compute_monthly_average_efficiency(
+    efficiency_data: List[Dict[str, Any]],
+    year: int,
+    month: int,
+) -> Dict[str, Any]:
+    """
+    Compute monthly average efficiency from filtered charge sessions.
+
+    Filters data to only include charges where stop_at is in the given month/year.
+
+    Returns dict with:
+      - estimated_efficiency_avg: average of estimated_efficiency (km per 100%)
+      - actual_efficiency_avg: average of actual_efficiency when available
+      - count: number of charges included in the month
+    """
+    filtered = filter_efficiency_data(efficiency_data)
+
+    # Filter by month/year
+    month_filtered = []
+    for eff in filtered:
+        stop_at = eff.get("stop_at")
+        if stop_at is None:
+            continue
+        if isinstance(stop_at, str):
+            try:
+                stop_at = datetime.datetime.fromisoformat(stop_at)
+            except (ValueError, TypeError):
+                continue
+        if stop_at.year == year and stop_at.month == month:
+            month_filtered.append(eff)
+
+    if not month_filtered:
+        return {
+            "estimated_efficiency_avg": None,
+            "actual_efficiency_avg": None,
+            "count": 0,
+        }
+
+    est_vals = [
+        e.get("estimated_efficiency")
+        for e in month_filtered
+        if e.get("estimated_efficiency") is not None
+    ]
+    actual_vals = [
+        e.get("actual_efficiency")
+        for e in month_filtered
+        if e.get("actual_efficiency") is not None
+    ]
+
+    avg_est = round(sum(est_vals) / len(est_vals), 2) if est_vals else None
+    avg_actual = round(sum(actual_vals) / len(actual_vals), 2) if actual_vals else None
+
+    return {
+        "estimated_efficiency_avg": avg_est,
+        "actual_efficiency_avg": avg_actual,
+        "count": len(month_filtered),
     }
