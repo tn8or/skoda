@@ -392,31 +392,64 @@ class TestXSSPrevention:
                     pass
 
                 def fetchall(self):
-                    # Return data for January with good efficiency
+                    # Return data for January only with good efficiency
+                    # Each charge grouped by mileage, with multiple hourly records per session
                     return [
+                        # Charge 1 - Mileage 10000, SOC 65% -> 85% (20% gain)
+                        # Range gain: 420-350 = 70 km → efficiency 350/20*100 = 350 ✓
                         (
-                            datetime(2025, 1, 10, 10, 0, 0),
-                            datetime(2025, 1, 10, 10, 0, 0),
-                            datetime(2025, 1, 10, 11, 0, 0),
-                            25.0,  # amount
-                            15.0,  # price
-                            400.0,  # charged_range
-                            100.0,  # start_range
-                            10000,  # mileage
-                            "home",
-                            80.0,  # soc
+                            datetime(2025, 1, 10, 10, 0, 0),  # log_timestamp
+                            datetime(2025, 1, 10, 10, 0, 0),  # start_at
+                            datetime(2025, 1, 10, 10, 30, 0),  # stop_at
+                            10.0,  # amount
+                            10.0,  # price
+                            420.0,  # charged_range (at end)
+                            350.0,  # start_range (at start)
+                            10000,  # mileage (session key)
+                            "home",  # position
+                            65.0,  # soc (start)
                         ),
                         (
-                            datetime(2025, 2, 10, 10, 0, 0),
-                            datetime(2025, 2, 10, 10, 0, 0),
-                            datetime(2025, 2, 10, 11, 0, 0),
-                            25.0,
-                            15.0,
+                            datetime(2025, 1, 10, 10, 30, 0),
+                            datetime(2025, 1, 10, 10, 0, 0),
+                            datetime(2025, 1, 10, 11, 0, 0),
+                            10.0,
+                            10.0,
                             420.0,
-                            100.0,
-                            10500,
+                            350.0,
+                            10000,
                             "home",
-                            80.0,
+                            85.0,  # soc (end) - 20% gain
+                        ),
+                        # Charge 2 - Mileage 10200 (200km driven), SOC 50% -> 75% (25% gain)
+                        # Range gain: 350-150 = 200 km → efficiency 200/25*100 = 800 ✗ (too high!)
+                        # Need lower range: 200km driven, 25% gain, target 300 efficiency
+                        # → range_gain should be 75 km: 200/25*100 = 800... still too high
+                        # Let's use 15% gain instead: 75/15*100 = 500 ✓
+                        # Actually, let's use 25% gain with range_gain ~63 km:  63/25*100 = 252 ✓
+                        (
+                            datetime(2025, 1, 20, 14, 0, 0),
+                            datetime(2025, 1, 20, 14, 0, 0),
+                            datetime(2025, 1, 20, 14, 30, 0),
+                            12.0,
+                            10.0,
+                            313.0,  # charged_range at end (50%)
+                            0.0,  # start_range
+                            10200,
+                            "home",
+                            50.0,  # soc start
+                        ),
+                        (
+                            datetime(2025, 1, 20, 14, 30, 0),
+                            datetime(2025, 1, 20, 14, 0, 0),
+                            datetime(2025, 1, 20, 15, 0, 0),
+                            0.0,
+                            0.0,
+                            376.0,  # charged_range at end (75%) - gain 63 km
+                            313.0,
+                            10200,
+                            "home",
+                            75.0,  # soc end - 25% gain: 63/25*100 = 252 ✓
                         ),
                     ]
 
@@ -441,13 +474,14 @@ class TestXSSPrevention:
             # Should contain Chart.js reference
             assert "chart.js" in body.lower()
 
-            # Should have JavaScript arrays for chart data
-            assert "const monthlyLabels" in body
-            assert "const monthlyEstimated" in body
-            assert "const monthlyActual" in body
+            # Should have inline script with monthly chart data
+            assert "monthlyLabels" in body
+            assert "monthlyEstimated" in body
+            assert "monthlyActual" in body
 
-            # Should have month abbreviations in JSON
-            assert '"Jan"' in body or "'Jan'" in body
+            # Should have charge labels in JSON (now shows individual charges, not months)
+            # With our January data, should show at least one charge
+            assert "Charge 1" in body
 
         finally:
             mod.db_connect = original_db_connect

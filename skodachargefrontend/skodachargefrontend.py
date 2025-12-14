@@ -169,23 +169,56 @@ async def root(
     ]
 
     # Group hourly rows to sessions by mileage
+    # Sessions are identified by the car's parking location (mileage value).
+    # The car may charge in multiple cycles during one parking session (e.g., overnight),
+    # and we group all cycles at the same mileage into one "session".
     sessions = group_sessions_by_mileage(hourly)
 
     # Compute annual efficiency data for the yearly chart
     annual_sessions = group_sessions_by_mileage(annual_hourly)
     annual_efficiency_data = compute_normalized_efficiency(annual_sessions)
 
-    # Build monthly averages for all 12 months of the year
-    monthly_chart_labels = []
-    monthly_estimated_points = []
-    monthly_actual_points = []
+    # Build monthly chart data for the current month: show all individual charges
+    #
+    # Data filtering constraints (applied to all charges):
+    #  - Range must be 150-550 km (normalized to 100% charge)
+    #  - SOC gain must be >= 20%
+    #
+    # Two efficiency metrics are displayed:
+    #  1. Range-based (blue): The car's reported 100% range after the charge.
+    #     If car reports 400km at 80% SOC, then 100% range = 500km.
+    #     Formula: (charged_range - start_range) / soc_gain * 100
+    #
+    #  2. Actual/mileage-based (green): Efficiency calculated from miles driven.
+    #     Measures distance driven since the previous charge, then normalizes to 100%.
+    #     Formula: (mileage_driven_since_last_charge) / soc_gain * 100
+    #     Only calculated if we can determine mileage between charges.
+    monthly_efficiency_data = compute_normalized_efficiency(sessions)
+    filtered_monthly = filter_efficiency_data(monthly_efficiency_data)
 
-    for m in range(1, 13):
-        month_avg = compute_monthly_average_efficiency(annual_efficiency_data, year, m)
-        month_name = datetime.datetime(year, m, 1).strftime("%b")
-        monthly_chart_labels.append(month_name)
-        monthly_estimated_points.append(month_avg.get("estimated_efficiency_avg"))
-        monthly_actual_points.append(month_avg.get("actual_efficiency_avg"))
+    # Sort by date for chart display
+    filtered_monthly.sort(
+        key=lambda x: x["stop_at"] if x["stop_at"] else datetime.datetime.min
+    )
+
+    # Build chart arrays with charge index as x-axis label
+    monthly_chart_labels = [f"Charge {i+1}" for i in range(len(filtered_monthly))]
+    monthly_estimated_points = [
+        (
+            round(c.get("estimated_efficiency", 0), 2)
+            if c.get("estimated_efficiency") is not None
+            else None
+        )
+        for c in filtered_monthly
+    ]
+    monthly_actual_points = [
+        (
+            round(c.get("actual_efficiency", 0), 2)
+            if c.get("actual_efficiency") is not None
+            else None
+        )
+        for c in filtered_monthly
+    ]
 
     prev_month = month - 1
     prev_year = year
@@ -431,6 +464,8 @@ async def root(
                     <a href=\"/\" class=\"text-blue-400 hover:underline\">Home</a>
                     <span class=\"mx-2 text-white\">|</span>
                     <a href=\"/?year={escape_html(next_year)}&month={escape_html(next_month)}\" class=\"text-blue-400 hover:underline\">Next Month »</a>
+                    <span class=\"mx-2 text-white\">|</span>
+                    <a href=\"/efficiency?year={escape_html(year)}\" class=\"text-blue-400 hover:underline\">Yearly Efficiency</a>
                 </div>
 
                 <!-- Monthly Efficiency Chart -->
@@ -441,61 +476,65 @@ async def root(
                     </div>
                     <script src=\"https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js\"><\/script>
                     <script>
-                        const monthlyLabels = {json.dumps(monthly_chart_labels)};
-                        const monthlyEstimated = {json.dumps(monthly_estimated_points)};
-                        const monthlyActual = {json.dumps(monthly_actual_points)};
+                        document.addEventListener('DOMContentLoaded', function() {{
+                            const monthlyLabels = {json.dumps(monthly_chart_labels)};
+                            const monthlyEstimated = {json.dumps(monthly_estimated_points)};
+                            const monthlyActual = {json.dumps(monthly_actual_points)};
 
-                        const monthlyCtx = document.getElementById('monthlyEfficiencyChart').getContext('2d');
-                        new Chart(monthlyCtx, {{
-                            type: 'line',
-                            data: {{
-                                labels: monthlyLabels,
-                                datasets: [
-                                    {{
-                                        label: 'Range-Based Efficiency (km @ 100%)',
-                                        data: monthlyEstimated,
-                                        borderColor: 'rgb(100, 200, 255)',
-                                        backgroundColor: 'rgba(100, 200, 255, 0.05)',
-                                        borderWidth: 2,
-                                        fill: true,
-                                        tension: 0.3,
-                                        pointRadius: 4,
-                                        pointBackgroundColor: 'rgb(100, 200, 255)',
+                            const monthlyCtx = document.getElementById('monthlyEfficiencyChart');
+                            if (monthlyCtx && window.Chart) {{
+                                new Chart(monthlyCtx, {{
+                                    type: 'line',
+                                    data: {{
+                                        labels: monthlyLabels,
+                                        datasets: [
+                                            {{
+                                                label: 'Range-Based Efficiency (km @ 100%)',
+                                                data: monthlyEstimated,
+                                                borderColor: 'rgb(100, 200, 255)',
+                                                backgroundColor: 'rgba(100, 200, 255, 0.05)',
+                                                borderWidth: 2,
+                                                fill: true,
+                                                tension: 0.3,
+                                                pointRadius: 4,
+                                                pointBackgroundColor: 'rgb(100, 200, 255)'
+                                            }},
+                                            {{
+                                                label: 'Mileage-Based Efficiency (km @ 100%)',
+                                                data: monthlyActual,
+                                                borderColor: 'rgb(144, 238, 144)',
+                                                backgroundColor: 'rgba(144, 238, 144, 0.05)',
+                                                borderWidth: 2,
+                                                fill: true,
+                                                tension: 0.3,
+                                                pointRadius: 4,
+                                                pointBackgroundColor: 'rgb(144, 238, 144)'
+                                            }}
+                                        ]
                                     }},
-                                    {{
-                                        label: 'Mileage-Based Efficiency (km @ 100%)',
-                                        data: monthlyActual,
-                                        borderColor: 'rgb(144, 238, 144)',
-                                        backgroundColor: 'rgba(144, 238, 144, 0.05)',
-                                        borderWidth: 2,
-                                        fill: true,
-                                        tension: 0.3,
-                                        pointRadius: 4,
-                                        pointBackgroundColor: 'rgb(144, 238, 144)',
+                                    options: {{
+                                        responsive: true,
+                                        maintainAspectRatio: false,
+                                        interaction: {{ mode: 'index', intersect: false }},
+                                        plugins: {{
+                                            legend: {{
+                                                labels: {{ color: 'rgb(255, 255, 255)', font: {{ size: 12 }}, padding: 15 }}
+                                            }}
+                                        }},
+                                        scales: {{
+                                            y: {{
+                                                beginAtZero: true,
+                                                max: 600,
+                                                ticks: {{ color: 'rgb(255, 255, 255)' }},
+                                                grid: {{ color: 'rgba(255, 255, 255, 0.1)' }}
+                                            }},
+                                            x: {{
+                                                ticks: {{ color: 'rgb(255, 255, 255)', maxRotation: 45, minRotation: 45 }},
+                                                grid: {{ color: 'rgba(255, 255, 255, 0.1)' }}
+                                            }}
+                                        }}
                                     }}
-                                ]
-                            }},
-                            options: {{
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                interaction: {{ mode: 'index', intersect: false }},
-                                plugins: {{
-                                    legend: {{
-                                        labels: {{ color: 'rgb(255, 255, 255)', font: {{ size: 12 }}, padding: 15 }}
-                                    }}
-                                }},
-                                scales: {{
-                                    y: {{
-                                        beginAtZero: true,
-                                        max: 600,
-                                        ticks: {{ color: 'rgb(255, 255, 255)' }},
-                                        grid: {{ color: 'rgba(255, 255, 255, 0.1)' }}
-                                    }},
-                                    x: {{
-                                        ticks: {{ color: 'rgb(255, 255, 255)', maxRotation: 45, minRotation: 45 }},
-                                        grid: {{ color: 'rgba(255, 255, 255, 0.1)' }}
-                                    }}
-                                }}
+                                }});
                             }}
                         }});
                     <\/script>
