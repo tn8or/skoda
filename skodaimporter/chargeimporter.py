@@ -41,6 +41,18 @@ _last_bg_error_msg: Optional[str] = None
 CONNECTION_STATUS_TIMEOUT = 15 * 60  # 15 minutes for connection status checks
 API_HEALTH_CHECK_TIMEOUT = 30 * 60  # 30 minutes for API health checks
 MQTT_STATE_CHECK_INTERVAL = 5 * 60  # 5 minutes for MQTT state verification
+# Grace window to avoid container restarts on transient auth failures
+AUTH_GRACE_SECONDS = 15 * 60
+
+
+def _is_transient_auth_error(msg: Optional[str]) -> bool:
+    if not msg:
+        return False
+    return (
+        "AuthorizationFailedError" in msg
+        or "MarketingConsentError" in msg
+        or "authorization failed" in msg.lower()
+    )
 
 
 def _mark_unhealthy(msg: str, exc: Optional[BaseException] = None) -> None:
@@ -106,6 +118,34 @@ async def check_api_health(vin: str) -> bool:
     except Exception as e:
         my_logger.warning("API health check failed: %s", e)
         await save_log_to_db(f"API health check failed: {e}")
+        return False
+
+
+async def attempt_mqtt_reconnect(vin: str) -> bool:
+    """Try to re-establish MQTT streaming without restarting the service."""
+    if myskoda is None:
+        my_logger.error("MQTT reconnect skipped: MySkoda client not available")
+        return False
+
+    try:
+        my_logger.info("Attempting MQTT re-subscribe before reconnect")
+        myskoda.subscribe_events(on_event)
+    except Exception as e:  # noqa: BLE001
+        my_logger.warning("MQTT re-subscribe attempt failed: %s", e)
+
+    try:
+        await myskoda.connect(load_secret("SKODA_USER"), load_secret("SKODA_PASS"))
+        myskoda.subscribe_events(on_event)
+        await asyncio.sleep(1)  # give the client a moment to settle
+        ok = check_mqtt_connection_state()
+        if ok:
+            await save_log_to_db("MQTT reconnect succeeded")
+        else:
+            await save_log_to_db("MQTT reconnect attempted but still disconnected")
+        return ok
+    except Exception as e:  # noqa: BLE001
+        my_logger.warning("MQTT reconnect failed: %s", e)
+        await save_log_to_db(f"MQTT reconnect failed: {e}")
         return False
 
 
@@ -452,18 +492,53 @@ async def skodarunner() -> None:
             # Lazy import MySkoda at runtime
             try:
                 from myskoda import MySkoda as _MySkoda
+                from myskoda.auth.authorization import AuthorizationFailedError
             except Exception as e:
                 _mark_unhealthy(f"myskoda import failed: {e}", e)
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 300)
                 continue
+
+            # Marketing consent handling became stricter upstream; import if available
+            try:
+                from myskoda.auth.authorization import MarketingConsentError
+            except Exception:  # noqa: BLE001
+                MarketingConsentError = None  # type: ignore
             async with ClientSession() as session:
                 my_logger.debug("Creating MySkoda instance...")
                 global myskoda
                 myskoda = _MySkoda(session)
-                await myskoda.connect(
-                    load_secret("SKODA_USER"), load_secret("SKODA_PASS")
-                )
+                try:
+                    await myskoda.connect(
+                        load_secret("SKODA_USER"), load_secret("SKODA_PASS")
+                    )
+                except AuthorizationFailedError as auth_err:
+                    # Upstream auth sometimes returns responses without redirect Location header
+                    detail = (
+                        "MySkoda authorization failed (missing redirect/Location header). "
+                        "Verify SKODA_USER/SKODA_PASS and retry"
+                    )
+                    _mark_unhealthy(detail, auth_err)
+                    await save_log_to_db(detail)
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, 300)
+                    continue
+                except Exception as auth_err:
+                    # Marketing consent failures surface as MarketingConsentError in newer myskoda
+                    if MarketingConsentError is not None and isinstance(
+                        auth_err, MarketingConsentError
+                    ):
+                        detail = (
+                            "MySkoda login requires marketing consent approval. "
+                            "Open the provided consent URL in a browser, approve, then retry. "
+                            f"URL: {auth_err}"
+                        )
+                        _mark_unhealthy(detail, auth_err)
+                        await save_log_to_db(detail)
+                        await asyncio.sleep(backoff)
+                        backoff = min(backoff * 2, 300)
+                        continue
+                    raise
                 my_logger.debug("Connected to MySkoda")
                 global VIN
                 vins = await myskoda.list_vehicle_vins()
@@ -515,6 +590,38 @@ def read_last_n_lines(filename: str, n: int):
 app = FastAPI()
 
 
+def _build_health_response(conn, cur, connection_results):
+    elapsed = connection_results["last_event_elapsed_seconds"]
+    my_logger.info(
+        "All connection checks passed. Last event received %s seconds ago.",
+        int(elapsed),
+    )
+
+    last_lines = read_last_n_lines("app.log", 15)
+    last_lines_joined = "".join(last_lines)
+
+    last_lines_joined += "\n\nConnection Health Check Results:\n"
+    for check, result in connection_results.items():
+        if check != "timestamp":
+            last_lines_joined += f"  {check}: {result}\n"
+
+    try:
+        cur.execute("SELECT COUNT(*) FROM skoda.rawlogs")
+        count = cur.fetchone()[0]
+        last_lines_joined += f"\nTotal logs in database: {count}\n"
+        cur.execute(
+            "SELECT log_timestamp, log_message FROM skoda.rawlogs order by log_timestamp desc limit 10"
+        )
+        rows = cur.fetchall()
+    except Exception as e:  # noqa: BLE001
+        my_logger.error("Error fetching from database: %s", e)
+        conn.rollback()
+        rows = []
+    for log_timestamp, log_message in rows:
+        last_lines_joined += f"{log_timestamp} - {log_message}\n"
+    return PlainTextResponse(last_lines_joined.encode("utf-8"))
+
+
 @app.get("/")
 async def root():
     conn, cur = await db_connect(my_logger)
@@ -523,10 +630,35 @@ async def root():
     connection_results = await perform_enhanced_connection_check(VIN)
 
     # If background task failed recently or is not running, report unhealthy
-    if _bg_task is None or _bg_task.done() or (time.time() - _last_bg_error_time) < 300:
+    recent_error_age = time.time() - _last_bg_error_time
+    if _bg_task is None or _bg_task.done():
         detail = _last_bg_error_msg or "background task not running"
         my_logger.error("Healthcheck failing: %s", detail)
         raise HTTPException(status_code=503, detail=detail)
+    # Treat auth failures as transient; avoid 503 to prevent autoheal restarts
+    if recent_error_age < 300:
+        if _is_transient_auth_error(_last_bg_error_msg) and recent_error_age < AUTH_GRACE_SECONDS:
+            my_logger.warning(
+                "Auth error within %ss; allowing grace period without restart",
+                int(AUTH_GRACE_SECONDS),
+            )
+            # Return healthy response but include degraded note
+            # Append a note to the response body via helper
+            resp = _build_health_response(conn, cur, connection_results)
+            # Add a short degraded note
+            try:
+                body = resp.body.decode("utf-8")
+            except Exception:
+                body = ""
+            body += (
+                "\nStatus: AUTH-DEGRADED (transient). "
+                "Importer will retry with backoff; container kept healthy to avoid restart.\n"
+            )
+            return PlainTextResponse(body.encode("utf-8"))
+        else:
+            detail = _last_bg_error_msg or "recent background error"
+            my_logger.error("Healthcheck failing: %s", detail)
+            raise HTTPException(status_code=503, detail=detail)
 
     # Use enhanced connection check results
     if not connection_results["overall_healthy"]:
@@ -571,6 +703,12 @@ async def root():
             my_logger.error(
                 "MQTT connection check failed, real-time events may be unavailable"
             )
+            # Attempt to reconnect before failing health
+            if await attempt_mqtt_reconnect(VIN):
+                my_logger.info("MQTT reconnect succeeded; rechecking health")
+                connection_results = await perform_enhanced_connection_check(VIN)
+                if connection_results["overall_healthy"]:
+                    return _build_health_response(conn, cur, connection_results)
             raise HTTPException(
                 status_code=503,
                 detail="Service temporarily unavailable - MQTT connection failed",
@@ -593,39 +731,7 @@ async def root():
                 detail="Service temporarily unavailable - connection checks failed",
             )
     else:
-        # All checks passed
-        elapsed = connection_results["last_event_elapsed_seconds"]
-        my_logger.info(
-            "All connection checks passed. Last event received %s seconds ago.",
-            int(elapsed),
-        )
-
-        # Prepare response with log information
-        last_25_lines = read_last_n_lines("app.log", 15)
-        last_25_lines_joined = "".join(last_25_lines)
-
-        # Add connection check results to response
-        last_25_lines_joined += f"\n\nConnection Health Check Results:\n"
-        for check, result in connection_results.items():
-            if check != "timestamp":
-                last_25_lines_joined += f"  {check}: {result}\n"
-
-        try:
-            cur.execute("SELECT COUNT(*) FROM skoda.rawlogs")
-            count = cur.fetchone()[0]
-            last_25_lines_joined += f"\nTotal logs in database: {count}\n"
-            cur.execute(
-                "SELECT log_timestamp, log_message FROM skoda.rawlogs order by log_timestamp desc limit 10"
-            )
-            rows = cur.fetchall()
-        except Exception as e:
-            my_logger.error("Error fetching from database: %s", e)
-            conn.rollback()
-            # Do not terminate the process on DB fetch failure; just rollback and return logs so far
-            rows = []
-        for log_timestamp, log_message in rows:
-            last_25_lines_joined += f"{log_timestamp} - {log_message}\n"
-        return PlainTextResponse(last_25_lines_joined.encode("utf-8"))
+        return _build_health_response(conn, cur, connection_results)
 
 
 # Start/stop background runner with FastAPI lifespan

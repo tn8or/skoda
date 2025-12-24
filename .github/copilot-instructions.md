@@ -1,3 +1,46 @@
+# Skoda Data Logger — Copilot helper (concise)
+
+Purpose: short, actionable notes for AI coding agents to be productive immediately.
+
+1) Big picture
+- Five FastAPI microservices in top-level folders: `skodaimporter`, `skodachargefinder`, `skodachargecollector`, `skodaupdatechargeprices`, `skodachargefrontend`.
+- Shared utilities: top-level `commons.py`, per-service `commons.py`/`mariadb.py`. DB schema: `sqldump/sqldump.sql`.
+- Data flow: ingest rawlogs → detect charge events (chargefinder) → persist/aggregate (chargecollector) → prices (updatechargeprices) → UI (frontend).
+
+2) Environment & quick setup
+- Python 3.13 is required (myskoda client). Create env: `python3.13 -m venv .venv && source .venv/bin/activate`.
+- Install service deps individually: `pip install -r SERVICE/requirements.txt`.
+- Dev tools: `pip install pytest pytest-asyncio pytest-cov pytest-mock pip-tools`.
+- Secrets: `./secrets/` holds SKODA_USER, SKODA_PASS, MARIADB_*, GRAYLOG_HOST/PORT, env. Use `commons.load_secret()` to read them.
+
+3) Build, test, run (practical)
+- Full pipeline (includes tests + image build): `./compose.sh up -d` — long; do not cancel.
+- Quick run tests: `source .venv/bin/activate && pytest -q` (or per-service `cd SERVICE && pytest -v`).
+- Coverage gates: `skodachargefinder >=50%`, `skodachargecollector >=85%`, `skodachargefrontend >=70%`. Docker builds enforce test stages.
+- Fast DB-only check: `docker compose up -d mariadb`; verify: `docker exec mariadb mariadb -uskoda -pskodapass skoda -e "SHOW TABLES;"`.
+
+4) Project-specific patterns to follow
+- Defensive imports: optional drivers and `myskoda` are often lazily imported with try/except; preserve that style for optional dependencies.
+- Use `commons.pull_api()` and `commons.load_secret()` rather than ad-hoc HTTP/secret code.
+- Health logic: `skodaimporter/chargeimporter.py` contains enhanced health checks (event timeout, API health, MQTT state). When updating health behavior, follow its graduated response pattern.
+- XSS rule: always escape user/database values rendered into HTML using `escape_html()` in `skodachargefrontend` (see `XSS_FIX_SUMMARY.md` and `tests/test_xss_prevention.py`).
+
+5) Integration & notable failure modes
+- MySkoda client (`myskoda`) can raise `AuthorizationFailedError` or `MarketingConsentError` during auth flows; code already handles both in `skodaimporter/chargeimporter.py`.
+- MQTT streaming state is exposed on `myskoda.mqtt`; health checks may attempt reconnects — prefer reusing existing `attempt_mqtt_reconnect()` helper if present.
+- DB: `mariadb` driver may be missing in CI; code handles missing driver gracefully — avoid assuming DB availability in unit tests.
+
+6) When making changes
+- Keep changes minimal and run the affected service's tests. After tests pass, re-run `./compose.sh up -d` to validate Docker build stages.
+- Preserve existing public APIs (endpoints) and logging format; use `get_logger()` in `commons.py` for consistent log formatting to Graylog and `app.log`.
+
+7) Key files to inspect quickly
+- `commons.py` — secrets, URLs, `pull_api`, `load_secret`, `get_logger()`.
+- `skodaimporter/chargeimporter.py` — MySkoda connect, `on_event`, enhanced health checks.
+- `skodachargefrontend/skodachargefrontend.py` — templates and `escape_html()` usage.
+- `sqldump/sqldump.sql` — database schema for `rawlogs`, `charge_events`, `charge_hours`.
+
+If you want, I can (A) trim this further, (B) add example `pytest` invocations per service, or (C) merge this with the longer README content — which would you prefer? Please tell me what to refine.
 # Skoda Data Logger - Microservices Architecture
 
 This repository contains a Python-based microservices system for collecting, processing, and analyzing vehicle charging data from Skoda Enyaq electric vehicles. The system integrates with MySkoda API and stores data in MariaDB with a web frontend for visualization.
@@ -24,7 +67,7 @@ Always reference these instructions first and fallback to search or bash command
    - `pip install -r skodachargefrontend/requirements.txt` (for frontend service)
 
 ### Build and Test Process
-- **Full build with testing**: `./compose.sh up` - Takes 30-60 minutes including mandatory Docker test stages.
+- **Full build with testing**: `./compose.sh up -d` - Takes 30-60 minutes including mandatory Docker test stages.
   - Step 1: Activates .venv and runs pytest -q (5-10 minutes)
   - Step 2: Compiles requirements for all services in parallel (2-5 minutes)
   - Step 3: Docker builds all services with mandatory test stages (20-45 minutes)
@@ -45,7 +88,7 @@ Always reference these instructions first and fallback to search or bash command
 ## Local Validation Policy
 - Before marking any task complete, always:
   1) Run pytest from the repo root (or the affected service) inside the Python 3.13 venv.
-  2) Rebuild and redeploy containers with `./compose.sh up` (do not cancel; expected <1 minute here).
+  2) Rebuild and redeploy containers with `./compose.sh up -d` (do not cancel; expected <1 minute here).
 - Only skip either step if the user explicitly says to skip.
 
 ### Mandatory Test Requirements
@@ -144,7 +187,7 @@ cd skodachargefinder && pytest -v    # 50% coverage required
 cd skodachargecollector && pytest -v # 85% coverage required
 
 # Build and start all services (NEVER CANCEL - 60-90 minutes, FAILS with network issues)
-./compose.sh up
+./compose.sh up -d
 
 # Start only database for testing (WORKS - takes ~5 seconds)
 docker compose up -d mariadb
@@ -158,6 +201,29 @@ docker exec mariadb mariadb -uskoda -pskodapass skoda -e "SHOW TABLES;"
 # Update a single service's dependencies
 pip-compile --upgrade --output-file=skodaimporter/requirements.txt skodaimporter/requirements.in
 ```
+
+### Service-Specific Examples
+- skodaimporter:
+  - Install deps: `pip install -r skodaimporter/requirements.txt`
+  - Run tests: `cd skodaimporter && pytest -v`
+  - Health check locally: `curl http://localhost:80/`
+  - Notes: handles `AuthorizationFailedError` and `MarketingConsentError`; MQTT reconnect via `attempt_mqtt_reconnect()`.
+- skodachargefinder:
+  - Install deps: `pip install -r skodachargefinder/requirements.txt`
+  - Run tests (≥50% cov): `cd skodachargefinder && pytest -v`
+  - Trigger detection API from importer: uses `commons.CHARGEFINDER_URL`.
+- skodachargecollector:
+  - Install deps: `pip install -r skodachargecollector/requirements.txt`
+  - Run tests (≥85% cov): `cd skodachargecollector && pytest -v`
+  - DB writes: persists charge events → hours; verify tables exist via MariaDB commands above.
+- skodaupdatechargeprices:
+  - Install deps: `pip install -r skodaupdatechargeprices/requirements.txt`
+  - Run tests: `cd skodaupdatechargeprices && pytest -v`
+  - Endpoints: `UPDATECHARGES_URL`, `UPDATEALLCHARGES_URL` in `commons.py`.
+- skodachargefrontend:
+  - Install deps: `pip install -r skodachargefrontend/requirements.txt`
+  - Run tests (≥70% cov): `cd skodachargefrontend && pytest -v`
+  - Health endpoint: `GET /` returns dashboard + connection checks; enforce `escape_html()` for any templated content.
 
 ## Service Dependencies and Architecture
 
