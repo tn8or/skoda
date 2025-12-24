@@ -19,7 +19,7 @@ certifi==2025.11.12
     #   httpx
 click==8.3.1
     # via uvicorn
-fastapi==0.124.4
+fastapi==0.127.0
     # via -r skodachargefinder/requirements.in
 graypy==2.1.0
     # via -r skodachargefinder/requirements.in
@@ -51,7 +51,7 @@ typing-extensions==4.15.0
     #   typing-inspection
 typing-inspection==0.4.2
     # via pydantic
-uvicorn==0.38.0
+uvicorn==0.40.0
     # via -r skodachargefinder/requirements.in
 watchfiles==1.1.1
     # via -r skodachargefinder/requirements.in
