@@ -637,7 +637,10 @@ async def root():
         raise HTTPException(status_code=503, detail=detail)
     # Treat auth failures as transient; avoid 503 to prevent autoheal restarts
     if recent_error_age < 300:
-        if _is_transient_auth_error(_last_bg_error_msg) and recent_error_age < AUTH_GRACE_SECONDS:
+        if (
+            _is_transient_auth_error(_last_bg_error_msg)
+            and recent_error_age < AUTH_GRACE_SECONDS
+        ):
             my_logger.warning(
                 "Auth error within %ss; allowing grace period without restart",
                 int(AUTH_GRACE_SECONDS),
