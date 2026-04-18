@@ -6,7 +6,7 @@ metadata:
     app.kubernetes.io/part-of: skoda
 data:
   MARIADB_DATABASE: skoda
-  MARIADB_HOSTNAME: mariadb.skoda.svc.cluster.local
+  MARIADB_HOSTNAME: mariadb.home.arpa
   MARIADB_PORT: "3306"
 ---
 apiVersion: v1

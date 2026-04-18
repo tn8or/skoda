@@ -72,6 +72,11 @@ spec:
             secretKeyRef:
               name: skoda-credentials
               key: SKODA_USER
+        - name: env
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: env
         - name: SKODA_PASS
           valueFrom:
             secretKeyRef:
@@ -193,6 +198,11 @@ spec:
             secretKeyRef:
               name: skoda-credentials
               key: SKODA_USER
+        - name: env
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: env
         - name: SKODA_PASS
           valueFrom:
             secretKeyRef:
@@ -314,6 +324,11 @@ spec:
             secretKeyRef:
               name: skoda-credentials
               key: SKODA_USER
+        - name: env
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: env
         - name: SKODA_PASS
           valueFrom:
             secretKeyRef:
@@ -435,6 +450,11 @@ spec:
             secretKeyRef:
               name: skoda-credentials
               key: SKODA_USER
+        - name: env
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: env
         - name: SKODA_PASS
           valueFrom:
             secretKeyRef:
@@ -556,6 +576,11 @@ spec:
             secretKeyRef:
               name: skoda-credentials
               key: SKODA_USER
+        - name: env
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: env
         - name: SKODA_PASS
           valueFrom:
             secretKeyRef:
