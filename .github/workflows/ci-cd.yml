@@ -114,10 +114,40 @@ jobs:
       - name: Validate dev overlay
         run: kustomize build k8s/overlays/dev > /dev/null
 
+  changed-services:
+    runs-on: skoda
+    outputs:
+      skodaimporter: ${{ steps.filter.outputs.skodaimporter }}
+      skodachargefinder: ${{ steps.filter.outputs.skodachargefinder }}
+      skodachargecollector: ${{ steps.filter.outputs.skodachargecollector }}
+      skodaupdatechargeprices: ${{ steps.filter.outputs.skodaupdatechargeprices }}
+      skodachargefrontend: ${{ steps.filter.outputs.skodachargefrontend }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed services
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            skodaimporter:
+              - 'skodaimporter/**'
+            skodachargefinder:
+              - 'skodachargefinder/**'
+            skodachargecollector:
+              - 'skodachargecollector/**'
+            skodaupdatechargeprices:
+              - 'skodaupdatechargeprices/**'
+            skodachargefrontend:
+              - 'skodachargefrontend/**'
+
   # Step 3a: Build test images (for non-main branches and PRs)
   build-test-images:
     if: github.ref != 'refs/heads/main'
-    needs: [ test, kustomize-validate ]
+    needs: [ test, kustomize-validate, changed-services ]
     runs-on: skoda
     timeout-minutes: 90
     strategy:
@@ -136,7 +166,33 @@ jobs:
             context-path: ./skodachargefrontend
 
     steps:
+      - name: Determine if service changed
+        id: service_changed
+        shell: bash
+        run: |
+          case "${{ matrix.context-path }}" in
+            ./skodaimporter)
+              echo "changed=${{ needs.changed-services.outputs.skodaimporter }}" >> "$GITHUB_OUTPUT"
+              ;;
+            ./skodachargefinder)
+              echo "changed=${{ needs.changed-services.outputs.skodachargefinder }}" >> "$GITHUB_OUTPUT"
+              ;;
+            ./skodachargecollector)
+              echo "changed=${{ needs.changed-services.outputs.skodachargecollector }}" >> "$GITHUB_OUTPUT"
+              ;;
+            ./skodaupdatechargeprices)
+              echo "changed=${{ needs.changed-services.outputs.skodaupdatechargeprices }}" >> "$GITHUB_OUTPUT"
+              ;;
+            ./skodachargefrontend)
+              echo "changed=${{ needs.changed-services.outputs.skodachargefrontend }}" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
       - name: Checkout repository
+        if: steps.service_changed.outputs.changed == 'true'
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
@@ -146,9 +202,11 @@ jobs:
             'schedule' && 'main' || github.ref }}
 
       - name: Set up QEMU
+        if: steps.service_changed.outputs.changed == 'true'
         uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
+        if: steps.service_changed.outputs.changed == 'true'
         uses: docker/setup-buildx-action@v4
         with:
           platforms: linux/amd64,linux/arm64
@@ -156,6 +214,7 @@ jobs:
             env.BUILDKIT_STEP_LOG_MAX_SIZE=50000000
 
       - name: Log in to the Container registry
+        if: steps.service_changed.outputs.changed == 'true'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -163,6 +222,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata (tags, labels) for Docker
+        if: steps.service_changed.outputs.changed == 'true'
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -173,6 +233,7 @@ jobs:
             type=sha,suffix=-test
 
       - name: Compute build args (commit, tag, date)
+        if: steps.service_changed.outputs.changed == 'true'
         id: buildargs
         shell: bash
         run: |
@@ -185,7 +246,8 @@ jobs:
           echo "service_name=${SERVICE_NAME}" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker test image
-        if: github.actor != 'dependabot[bot]'
+        if: github.actor != 'dependabot[bot]' && steps.service_changed.outputs.changed
+          == 'true'
         uses: docker/build-push-action@v7
         with:
           platforms: linux/amd64, linux/arm64
@@ -206,10 +268,15 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ github.ref_name }}-${{
             steps.buildargs.outputs.service_name }}
 
+      - name: Skip unchanged service image
+        if: steps.service_changed.outputs.changed != 'true'
+        run: echo "Skipping image build for ${{ matrix.context-path }} (no service
+          changes detected)"
+
   # Step 3b: Build production images (for main branch only)
   build-production-images:
     if: github.ref == 'refs/heads/main'
-    needs: [ test, kustomize-validate ]
+    needs: [ test, kustomize-validate, changed-services ]
     runs-on: skoda
     timeout-minutes: 90
     strategy:
@@ -228,7 +295,33 @@ jobs:
             context-path: ./skodachargefrontend
 
     steps:
+      - name: Determine if service changed
+        id: service_changed
+        shell: bash
+        run: |
+          case "${{ matrix.context-path }}" in
+            ./skodaimporter)
+              echo "changed=${{ needs.changed-services.outputs.skodaimporter }}" >> "$GITHUB_OUTPUT"
+              ;;
+            ./skodachargefinder)
+              echo "changed=${{ needs.changed-services.outputs.skodachargefinder }}" >> "$GITHUB_OUTPUT"
+              ;;
+            ./skodachargecollector)
+              echo "changed=${{ needs.changed-services.outputs.skodachargecollector }}" >> "$GITHUB_OUTPUT"
+              ;;
+            ./skodaupdatechargeprices)
+              echo "changed=${{ needs.changed-services.outputs.skodaupdatechargeprices }}" >> "$GITHUB_OUTPUT"
+              ;;
+            ./skodachargefrontend)
+              echo "changed=${{ needs.changed-services.outputs.skodachargefrontend }}" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
       - name: Checkout repository
+        if: steps.service_changed.outputs.changed == 'true'
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
@@ -238,9 +331,11 @@ jobs:
             'schedule' && 'main' || github.ref }}
 
       - name: Set up QEMU
+        if: steps.service_changed.outputs.changed == 'true'
         uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
+        if: steps.service_changed.outputs.changed == 'true'
         uses: docker/setup-buildx-action@v4
         with:
           platforms: linux/amd64,linux/arm64
@@ -248,6 +343,7 @@ jobs:
             env.BUILDKIT_STEP_LOG_MAX_SIZE=50000000
 
       - name: Log in to the Container registry
+        if: steps.service_changed.outputs.changed == 'true'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -255,6 +351,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata (tags, labels) for Docker
+        if: steps.service_changed.outputs.changed == 'true'
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -266,6 +363,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Compute build args (commit, tag, date)
+        if: steps.service_changed.outputs.changed == 'true'
         id: buildargs
         shell: bash
         run: |
@@ -278,7 +376,8 @@ jobs:
           echo "service_name=${SERVICE_NAME}" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker production image
-        if: github.actor != 'dependabot[bot]'
+        if: github.actor != 'dependabot[bot]' && steps.service_changed.outputs.changed
+          == 'true'
         uses: docker/build-push-action@v7
         with:
           platforms: linux/amd64, linux/arm64
@@ -297,6 +396,11 @@ jobs:
             type=gha,scope=main-${{ steps.buildargs.outputs.service_name }}
           cache-to: type=gha,mode=max,scope=main-${{ steps.buildargs.outputs.service_name
             }}
+
+      - name: Skip unchanged service image
+        if: steps.service_changed.outputs.changed != 'true'
+        run: echo "Skipping image build for ${{ matrix.context-path }} (no service
+          changes detected)"
 
   # Step 4a: Notify test webhook (after test builds)
   notify-test-webhook:
