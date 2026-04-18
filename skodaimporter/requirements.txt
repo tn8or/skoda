@@ -6,9 +6,9 @@
 #
 aiohappyeyeballs==2.6.1
     # via aiohttp
-aiohttp==3.13.2
+aiohttp==3.13.5
     # via myskoda
-aiomqtt==2.4.0
+aiomqtt==2.5.1
     # via myskoda
 aiosignal==1.4.0
     # via aiohttp
@@ -16,22 +16,22 @@ annotated-doc==0.0.4
     # via fastapi
 annotated-types==0.7.0
     # via pydantic
-anyio==4.12.0
+anyio==4.13.0
     # via
     #   httpx
     #   starlette
     #   watchfiles
 asyncio==3.4.3
     # via myskoda
-attrs==25.4.0
+attrs==26.1.0
     # via aiohttp
-certifi==2025.11.12
+certifi==2026.2.25
     # via
     #   httpcore
     #   httpx
-click==8.3.1
+click==8.3.2
     # via uvicorn
-fastapi==0.127.0
+fastapi==0.136.0
     # via -r skodaimporter/requirements.in
 frozenlist==1.8.0
     # via
@@ -52,15 +52,15 @@ idna==3.11
     #   anyio
     #   httpx
     #   yarl
-mashumaro[orjson]==3.17
+mashumaro[orjson]==3.20
     # via myskoda
-multidict==6.7.0
+multidict==6.7.1
     # via
     #   aiohttp
     #   yarl
 myskoda==2.5.0
     # via -r skodaimporter/requirements.in
-orjson==3.11.5
+orjson==3.11.8
     # via mashumaro
 paho-mqtt==2.1.0
     # via aiomqtt
@@ -68,17 +68,17 @@ propcache==0.4.1
     # via
     #   aiohttp
     #   yarl
-pydantic==2.12.5
+pydantic==2.13.2
     # via fastapi
-pydantic-core==2.41.5
+pydantic-core==2.46.2
     # via pydantic
-pyjwt==2.10.1
+pyjwt==2.12.1
     # via myskoda
 pymysql==1.1.2
     # via -r skodaimporter/requirements.in
 pyyaml==6.0.3
     # via myskoda
-starlette==0.50.0
+starlette==1.0.0
     # via fastapi
 typing-extensions==4.15.0
     # via
@@ -88,10 +88,12 @@ typing-extensions==4.15.0
     #   pydantic-core
     #   typing-inspection
 typing-inspection==0.4.2
-    # via pydantic
-uvicorn==0.40.0
+    # via
+    #   fastapi
+    #   pydantic
+uvicorn==0.44.0
     # via -r skodaimporter/requirements.in
 watchfiles==1.1.1
     # via -r skodaimporter/requirements.in
-yarl==1.22.0
+yarl==1.23.0
     # via aiohttp
