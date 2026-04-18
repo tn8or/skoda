@@ -6,9 +6,9 @@ permissions:
 
 "on":
   push:
-    branches: [main]
+    branches: [ main ]
   pull_request:
-    branches: [main]
+    branches: [ main ]
   workflow_dispatch:
     inputs:
       branch:
@@ -52,7 +52,8 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles(format('{0}/requirements.txt', matrix.service)) }}
+          key: ${{ runner.os }}-pip-${{ hashFiles(format('{0}/requirements.txt',
+            matrix.service)) }}
           restore-keys: |
             ${{ runner.os }}-pip-
 
@@ -99,7 +100,7 @@ jobs:
   # Step 3a: Build test images (for non-main branches and PRs)
   build-test-images:
     if: github.ref != 'refs/heads/main'
-    needs: [test]
+    needs: [ test ]
     runs-on: skoda
     timeout-minutes: 90
     strategy:
@@ -123,7 +124,9 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch != '' && github.event.inputs.branch || github.event_name == 'schedule' && 'main' || github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch
+            != '' && github.event.inputs.branch || github.event_name ==
+            'schedule' && 'main' || github.ref }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -183,12 +186,13 @@ jobs:
           cache-from: |
             type=gha,scope=${{ github.ref_name }}-${{ steps.buildargs.outputs.service_name }}
             type=gha,scope=main-${{ steps.buildargs.outputs.service_name }}
-          cache-to: type=gha,mode=max,scope=${{ github.ref_name }}-${{ steps.buildargs.outputs.service_name }}
+          cache-to: type=gha,mode=max,scope=${{ github.ref_name }}-${{
+            steps.buildargs.outputs.service_name }}
 
   # Step 3b: Build production images (for main branch only)
   build-production-images:
     if: github.ref == 'refs/heads/main'
-    needs: [test]
+    needs: [ test ]
     runs-on: skoda
     timeout-minutes: 90
     strategy:
@@ -212,7 +216,9 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch != '' && github.event.inputs.branch || github.event_name == 'schedule' && 'main' || github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch
+            != '' && github.event.inputs.branch || github.event_name ==
+            'schedule' && 'main' || github.ref }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -272,7 +278,8 @@ jobs:
             PYTHON_IMAGE=mirror.gcr.io/library/python:3.13-alpine
           cache-from: |
             type=gha,scope=main-${{ steps.buildargs.outputs.service_name }}
-          cache-to: type=gha,mode=max,scope=main-${{ steps.buildargs.outputs.service_name }}
+          cache-to: type=gha,mode=max,scope=main-${{ steps.buildargs.outputs.service_name
+            }}
 
   # Step 4a: Notify test webhook (after test builds)
   notify-test-webhook:
