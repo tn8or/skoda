@@ -15,6 +15,7 @@ This document defines the exact secrets that must be provisioned in the Kubernet
 ```yaml
 SKODA_USER: <string>       # MySkoda API username
 SKODA_PASS: <string>       # MySkoda API password
+env: <string>              # Runtime environment (e.g. "prod", "dev")
 ```
 
 **Optional Keys**:
@@ -29,6 +30,7 @@ SKODA_VEHICLE: <string>    # Vehicle VIN or identifier
 
 - `skoda_user` → SKODA_USER
 - `skoda_pass` → SKODA_PASS
+- `env` → env
 - `skoda_auth` → SKODA_AUTH (optional)
 - `skoda_events` → SKODA_EVENTS (optional)
 - `skoda_vehicle` → SKODA_VEHICLE (optional)
@@ -39,6 +41,7 @@ SKODA_VEHICLE: <string>    # Vehicle VIN or identifier
 kubectl create secret generic skoda-credentials \
   --from-literal=SKODA_USER='<user>' \
   --from-literal=SKODA_PASS='<pass>' \
+  --from-literal=env='prod' \
   --from-literal=SKODA_AUTH='<auth>' \
   --from-literal=SKODA_EVENTS='<events>' \
   --from-literal=SKODA_VEHICLE='<vehicle>' \
@@ -76,38 +79,25 @@ kubectl create secret generic mariadb-credentials \
 
 ---
 
-### 3. `mariadb-app-config` (Type: ConfigMap - Updated via Ansible)
+### 3. `mariadb-app-config` (Type: ConfigMap - patched by homelab gitops kustomization)
 
 **Namespace**: `skoda`
 
 **Purpose**: MariaDB connection configuration (non-sensitive)
 
-**Keys configurable via Ansible**:
+**Keys**:
 
 ```yaml
-MARIADB_DATABASE: "skoda"                                      # Database name (static)
-MARIADB_HOSTNAME: "mariadb.skoda.svc.cluster.local"           # MariaDB service address (overridable per environment)
-MARIADB_PORT: "3306"                                           # Database port (static)
+MARIADB_DATABASE: "skoda"      # Database name
+MARIADB_HOSTNAME: "mariadb.home.arpa"  # MariaDB host — prod default; dev overlay patches to mariadb.skoda-dev.svc.cluster.local
+MARIADB_PORT: "3306"           # Database port
 ```
 
-**Ansible Vault Variables** (from central repo):
+**Update procedure**: Edit the `mariadb-app-config` patch in the relevant overlay
+(`k8s/overlays/prod/patch-configmap-prod.yaml` or `k8s/overlays/dev/patch-configmap-dev.yaml`)
+and push — Argo CD will sync it automatically.
 
-- `mariadb_hostname` → MARIADB_HOSTNAME (can differ: prod uses one MariaDB, dev uses another)
-- `mariadb_database` → MARIADB_DATABASE (optional, defaults to "skoda")
-- `mariadb_port` → MARIADB_PORT (optional, defaults to "3306")
-
-**Example values per environment**:
-
-```yaml
-# Production
-mariadb_hostname: "mariadb.prod.svc.cluster.local"
-
-# Development/Testing
-mariadb_hostname: "mariadb-dev.skoda.svc.cluster.local"
-
-# External MariaDB
-mariadb_hostname: "db.example.com"
-```
+Do **not** update this via Ansible; Argo CD will overwrite any out-of-band changes on the next sync.
 
 ---
 
@@ -221,7 +211,7 @@ kubectl get configmaps -n skoda
 
 # CRITICAL: Verify MARIADB_HOSTNAME is correctly set per environment
 kubectl get configmap mariadb-app-config -n skoda -o jsonpath='{.data.MARIADB_HOSTNAME}'
-# Expected output: mariadb.skoda.svc.cluster.local (or your configured value)
+# Expected output: mariadb.home.arpa (prod) or mariadb.skoda-dev.svc.cluster.local (dev)
 
 # Check service discovery works (test with the actual MARIADB_HOSTNAME from above)
 MARIADB_HOST=$(kubectl get configmap mariadb-app-config -n skoda -o jsonpath='{.data.MARIADB_HOSTNAME}')
@@ -273,7 +263,7 @@ Verify the mariadb-app-config contains correct hostname:
 kubectl get configmap mariadb-app-config -n skoda -o yaml
 ```
 
-If MARIADB_HOSTNAME is wrong or missing, re-run the Ansible playbook that creates ConfigMaps.
+If MARIADB_HOSTNAME is wrong or missing, edit the configmap patch in `k8s/overlays/{prod,dev}/patch-configmap-{prod,dev}.yaml` and push — Argo CD will sync it.
 
 ### Pod failing to start with database connection errors
 
