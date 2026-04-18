@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   update:
-    runs-on: ubuntu-latest
+    runs-on: skoda
     timeout-minutes: 20 # Dependency compilation should be quick
     steps:
       - name: Checkout
