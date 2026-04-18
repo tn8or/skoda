@@ -1,6 +1,13 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+namespace: skoda-dev
+configMapGenerator:
+- name: mariadb-init-schema
+  files:
+  - sqldump.sql
 resources:
 - ../../base
+- mariadb.yaml
 patches:
 - path: patch-deployments.yaml
+- path: patch-configmap-dev.yaml

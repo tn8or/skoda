@@ -103,6 +103,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Verify dev schema copy is in sync
+        run: |
+          if ! cmp -s sqldump/sqldump.sql k8s/overlays/dev/sqldump.sql; then
+            echo "k8s/overlays/dev/sqldump.sql is out of sync with sqldump/sqldump.sql"
+            echo "Please copy sqldump/sqldump.sql to k8s/overlays/dev/sqldump.sql"
+            diff -u sqldump/sqldump.sql k8s/overlays/dev/sqldump.sql | head -n 200 || true
+            exit 1
+          fi
+
       - name: Setup Kustomize
         uses: imranismail/setup-kustomize@v2
         with:
