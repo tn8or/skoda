@@ -166,7 +166,7 @@ jobs:
 
       - name: Build and push Docker test image
         if: github.actor != 'dependabot[bot]'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           platforms: linux/amd64, linux/arm64
           context: ${{ matrix.context-path }}
@@ -258,7 +258,7 @@ jobs:
 
       - name: Build and push Docker production image
         if: github.actor != 'dependabot[bot]'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           platforms: linux/amd64, linux/arm64
           context: ${{ matrix.context-path }}
