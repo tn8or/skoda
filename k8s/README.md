@@ -25,6 +25,7 @@ k8s/
 └── overlays/
     ├── dev/
     │   ├── kustomization.yaml
+  │   ├── mariadb.yaml
     │   └── patch-deployments.yaml
     └── prod/
         ├── kustomization.yaml
@@ -35,7 +36,7 @@ k8s/
 
 - k8s/base: shared resources (namespace-safe base Deployments, Services, ConfigMaps).
 - k8s/overlays/prod: production replicas/resources.
-- k8s/overlays/dev: lower replicas/resources for development.
+- k8s/overlays/dev: lower replicas/resources for development in namespace skoda-dev, including an in-cluster MariaDB Deployment and Service.
 
 Render manifests locally:
 
@@ -76,6 +77,11 @@ Required ConfigMaps:
   - MARIADB_PORT
 - graylog-app-config
   - GRAYLOG_PORT
+
+Dev overlay specifics:
+
+- MARIADB_HOSTNAME is patched to mariadb.skoda-dev.svc.cluster.local.
+- MariaDB loads schema from k8s/overlays/dev/sqldump.sql via /docker-entrypoint-initdb.d when the dev DB is initialized.
 
 ## Services Included
 
