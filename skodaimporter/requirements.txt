@@ -72,7 +72,7 @@ pydantic==2.12.5
     # via fastapi
 pydantic-core==2.41.5
     # via pydantic
-pyjwt==2.10.1
+pyjwt==2.12.0
     # via myskoda
 pymysql==1.1.2
     # via -r skodaimporter/requirements.in
