@@ -41,7 +41,7 @@ pydantic-core==2.41.5
     # via pydantic
 pymysql==1.1.2
     # via -r skodachargefinder/requirements.in
-starlette==0.50.0
+starlette==0.52.1
     # via fastapi
 typing-extensions==4.15.0
     # via
