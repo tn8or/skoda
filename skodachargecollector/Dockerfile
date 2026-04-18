@@ -3,11 +3,12 @@ FROM mirror.gcr.io/library/python:3.13-alpine AS build
 
 WORKDIR /app
 ARG TARGETPLATFORM
-RUN echo "I'm building for $TARGETPLATFORM"
+ARG TARGETARCH
+RUN echo "I'm building for $TARGETPLATFORM ($TARGETARCH)"
 RUN apk add --no-cache gcc musl-dev
 
 ENV VIRTUAL_ENV=/opt/venv
-RUN python3 -m venv $VIRTUAL_ENV
+RUN python3 -m venv "$VIRTUAL_ENV" && echo "$TARGETARCH" > "$VIRTUAL_ENV/.targetarch"
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 RUN . /opt/venv/bin/activate && pip install --no-cache-dir --upgrade pip pip-tools

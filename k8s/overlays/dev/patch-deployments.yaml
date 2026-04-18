@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: skodaimporter
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+      - name: skodaimporter
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "400m"
+            memory: "384Mi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: skodachargefinder
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+      - name: skodachargefinder
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "300m"
+            memory: "384Mi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: skodachargecollector
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+      - name: skodachargecollector
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "192Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: skodaupdatechargeprices
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+      - name: skodaupdatechargeprices
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "96Mi"
+          limits:
+            cpu: "250m"
+            memory: "256Mi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: skodachargefrontend
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+      - name: skodachargefrontend
+        resources:
+          requests:
+            cpu: "75m"
+            memory: "128Mi"
+          limits:
+            cpu: "300m"
+            memory: "384Mi"

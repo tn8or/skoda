@@ -1,0 +1,84 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: skodaimporter
+  labels:
+    app.kubernetes.io/name: skodaimporter
+    app.kubernetes.io/part-of: skoda
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: skodaimporter
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80
+    targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: skodachargefinder
+  labels:
+    app.kubernetes.io/name: skodachargefinder
+    app.kubernetes.io/part-of: skoda
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: skodachargefinder
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80
+    targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: skodachargecollector
+  labels:
+    app.kubernetes.io/name: skodachargecollector
+    app.kubernetes.io/part-of: skoda
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: skodachargecollector
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80
+    targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: skodaupdatechargeprices
+  labels:
+    app.kubernetes.io/name: skodaupdatechargeprices
+    app.kubernetes.io/part-of: skoda
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: skodaupdatechargeprices
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80
+    targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: skodachargefrontend
+  labels:
+    app.kubernetes.io/name: skodachargefrontend
+    app.kubernetes.io/part-of: skoda
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: skodachargefrontend
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80
+    targetPort: http

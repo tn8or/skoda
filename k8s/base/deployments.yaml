@@ -1,0 +1,604 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: skodaimporter
+  labels:
+    app.kubernetes.io/name: skodaimporter
+    app.kubernetes.io/part-of: skoda
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: skodaimporter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: skodaimporter
+        app.kubernetes.io/part-of: skoda
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: skodaimporter
+        image: ghcr.io/tn8or/skodaimporter:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 80
+          protocol: TCP
+        env:
+        - name: MARIADB_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: mariadb-app-config
+              key: MARIADB_DATABASE
+        - name: MARIADB_HOSTNAME
+          valueFrom:
+            configMapKeyRef:
+              name: mariadb-app-config
+              key: MARIADB_HOSTNAME
+        - name: MARIADB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: mariadb-app-config
+              key: MARIADB_PORT
+        - name: MARIADB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-credentials
+              key: MARIADB_USERNAME
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-credentials
+              key: MARIADB_PASSWORD
+        - name: GRAYLOG_HOST
+          valueFrom:
+            secretKeyRef:
+              name: graylog-credentials
+              key: GRAYLOG_HOST
+        - name: GRAYLOG_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: graylog-app-config
+              key: GRAYLOG_PORT
+        - name: SKODA_USER
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_USER
+        - name: SKODA_PASS
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_PASS
+        - name: SKODA_AUTH
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_AUTH
+              optional: true
+        - name: SKODA_EVENTS
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_EVENTS
+              optional: true
+        - name: SKODA_VEHICLE
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_VEHICLE
+              optional: true
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          capabilities:
+            drop:
+            - ALL
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: skodachargefinder
+  labels:
+    app.kubernetes.io/name: skodachargefinder
+    app.kubernetes.io/part-of: skoda
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: skodachargefinder
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: skodachargefinder
+        app.kubernetes.io/part-of: skoda
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: skodachargefinder
+        image: ghcr.io/tn8or/skodachargefinder:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 80
+          protocol: TCP
+        env:
+        - name: MARIADB_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: mariadb-app-config
+              key: MARIADB_DATABASE
+        - name: MARIADB_HOSTNAME
+          valueFrom:
+            configMapKeyRef:
+              name: mariadb-app-config
+              key: MARIADB_HOSTNAME
+        - name: MARIADB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: mariadb-app-config
+              key: MARIADB_PORT
+        - name: MARIADB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-credentials
+              key: MARIADB_USERNAME
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-credentials
+              key: MARIADB_PASSWORD
+        - name: GRAYLOG_HOST
+          valueFrom:
+            secretKeyRef:
+              name: graylog-credentials
+              key: GRAYLOG_HOST
+        - name: GRAYLOG_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: graylog-app-config
+              key: GRAYLOG_PORT
+        - name: SKODA_USER
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_USER
+        - name: SKODA_PASS
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_PASS
+        - name: SKODA_AUTH
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_AUTH
+              optional: true
+        - name: SKODA_EVENTS
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_EVENTS
+              optional: true
+        - name: SKODA_VEHICLE
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_VEHICLE
+              optional: true
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          capabilities:
+            drop:
+            - ALL
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: skodachargecollector
+  labels:
+    app.kubernetes.io/name: skodachargecollector
+    app.kubernetes.io/part-of: skoda
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: skodachargecollector
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: skodachargecollector
+        app.kubernetes.io/part-of: skoda
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: skodachargecollector
+        image: ghcr.io/tn8or/skodachargecollector:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 80
+          protocol: TCP
+        env:
+        - name: MARIADB_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: mariadb-app-config
+              key: MARIADB_DATABASE
+        - name: MARIADB_HOSTNAME
+          valueFrom:
+            configMapKeyRef:
+              name: mariadb-app-config
+              key: MARIADB_HOSTNAME
+        - name: MARIADB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: mariadb-app-config
+              key: MARIADB_PORT
+        - name: MARIADB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-credentials
+              key: MARIADB_USERNAME
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-credentials
+              key: MARIADB_PASSWORD
+        - name: GRAYLOG_HOST
+          valueFrom:
+            secretKeyRef:
+              name: graylog-credentials
+              key: GRAYLOG_HOST
+        - name: GRAYLOG_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: graylog-app-config
+              key: GRAYLOG_PORT
+        - name: SKODA_USER
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_USER
+        - name: SKODA_PASS
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_PASS
+        - name: SKODA_AUTH
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_AUTH
+              optional: true
+        - name: SKODA_EVENTS
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_EVENTS
+              optional: true
+        - name: SKODA_VEHICLE
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_VEHICLE
+              optional: true
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          capabilities:
+            drop:
+            - ALL
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: skodaupdatechargeprices
+  labels:
+    app.kubernetes.io/name: skodaupdatechargeprices
+    app.kubernetes.io/part-of: skoda
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: skodaupdatechargeprices
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: skodaupdatechargeprices
+        app.kubernetes.io/part-of: skoda
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: skodaupdatechargeprices
+        image: ghcr.io/tn8or/skodaupdatechargeprices:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 80
+          protocol: TCP
+        env:
+        - name: MARIADB_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: mariadb-app-config
+              key: MARIADB_DATABASE
+        - name: MARIADB_HOSTNAME
+          valueFrom:
+            configMapKeyRef:
+              name: mariadb-app-config
+              key: MARIADB_HOSTNAME
+        - name: MARIADB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: mariadb-app-config
+              key: MARIADB_PORT
+        - name: MARIADB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-credentials
+              key: MARIADB_USERNAME
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-credentials
+              key: MARIADB_PASSWORD
+        - name: GRAYLOG_HOST
+          valueFrom:
+            secretKeyRef:
+              name: graylog-credentials
+              key: GRAYLOG_HOST
+        - name: GRAYLOG_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: graylog-app-config
+              key: GRAYLOG_PORT
+        - name: SKODA_USER
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_USER
+        - name: SKODA_PASS
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_PASS
+        - name: SKODA_AUTH
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_AUTH
+              optional: true
+        - name: SKODA_EVENTS
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_EVENTS
+              optional: true
+        - name: SKODA_VEHICLE
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_VEHICLE
+              optional: true
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          capabilities:
+            drop:
+            - ALL
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: skodachargefrontend
+  labels:
+    app.kubernetes.io/name: skodachargefrontend
+    app.kubernetes.io/part-of: skoda
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: skodachargefrontend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: skodachargefrontend
+        app.kubernetes.io/part-of: skoda
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: skodachargefrontend
+        image: ghcr.io/tn8or/skodachargefrontend:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 80
+          protocol: TCP
+        env:
+        - name: MARIADB_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: mariadb-app-config
+              key: MARIADB_DATABASE
+        - name: MARIADB_HOSTNAME
+          valueFrom:
+            configMapKeyRef:
+              name: mariadb-app-config
+              key: MARIADB_HOSTNAME
+        - name: MARIADB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: mariadb-app-config
+              key: MARIADB_PORT
+        - name: MARIADB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-credentials
+              key: MARIADB_USERNAME
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-credentials
+              key: MARIADB_PASSWORD
+        - name: GRAYLOG_HOST
+          valueFrom:
+            secretKeyRef:
+              name: graylog-credentials
+              key: GRAYLOG_HOST
+        - name: GRAYLOG_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: graylog-app-config
+              key: GRAYLOG_PORT
+        - name: SKODA_USER
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_USER
+        - name: SKODA_PASS
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_PASS
+        - name: SKODA_AUTH
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_AUTH
+              optional: true
+        - name: SKODA_EVENTS
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_EVENTS
+              optional: true
+        - name: SKODA_VEHICLE
+          valueFrom:
+            secretKeyRef:
+              name: skoda-credentials
+              key: SKODA_VEHICLE
+              optional: true
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          capabilities:
+            drop:
+            - ALL
