@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: skodaimporter
 spec:
-  replicas: 2
+  replicas: 1
   template:
     spec:
       containers:
@@ -21,7 +21,7 @@ kind: Deployment
 metadata:
   name: skodachargefinder
 spec:
-  replicas: 2
+  replicas: 1
   template:
     spec:
       containers:
@@ -39,7 +39,7 @@ kind: Deployment
 metadata:
   name: skodachargecollector
 spec:
-  replicas: 2
+  replicas: 1
   template:
     spec:
       containers:
@@ -75,7 +75,7 @@ kind: Deployment
 metadata:
   name: skodachargefrontend
 spec:
-  replicas: 2
+  replicas: 3
   template:
     spec:
       containers:
