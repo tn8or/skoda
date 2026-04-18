@@ -93,5 +93,5 @@ uvicorn==0.40.0
     # via -r skodaimporter/requirements.in
 watchfiles==1.1.1
     # via -r skodaimporter/requirements.in
-yarl==1.22.0
+yarl==1.23.0
     # via aiohttp
