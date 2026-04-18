@@ -429,8 +429,12 @@ jobs:
           WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
         run: |
           repo_url="https://github.com/${{ github.repository }}"
+          ref_value="${GITHUB_REF}"
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" && -n "${GITHUB_HEAD_REF}" ]]; then
+            ref_value="refs/heads/${GITHUB_HEAD_REF}"
+          fi
           payload=$(jq -nc \
-            --arg ref "refs/heads/main" \
+            --arg ref "$ref_value" \
             --arg after "${{ github.sha }}" \
             --arg before "${{ github.event.before || '0000000000000000000000000000000000000000' }}" \
             --arg repo_name "${{ github.event.repository.name }}" \
@@ -465,8 +469,12 @@ jobs:
           WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
         run: |
           repo_url="https://github.com/${{ github.repository }}"
+          ref_value="${GITHUB_REF}"
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" && -n "${GITHUB_HEAD_REF}" ]]; then
+            ref_value="refs/heads/${GITHUB_HEAD_REF}"
+          fi
           payload=$(jq -nc \
-            --arg ref "${{ github.ref }}" \
+            --arg ref "$ref_value" \
             --arg after "${{ github.sha }}" \
             --arg before "${{ github.event.before || '0000000000000000000000000000000000000000' }}" \
             --arg repo_name "${{ github.event.repository.name }}" \
