@@ -25,7 +25,7 @@ concurrency:
 jobs:
   # Step 1: Run tests for all services.
   test:
-    runs-on: ubuntu-latest
+    runs-on: skoda
     strategy:
       max-parallel: 5
       matrix:
@@ -100,7 +100,7 @@ jobs:
   build-test-images:
     if: github.ref != 'refs/heads/main'
     needs: [test]
-    runs-on: ubuntu-latest
+    runs-on: skoda
     timeout-minutes: 90
     strategy:
       max-parallel: 5
@@ -191,7 +191,7 @@ jobs:
   build-production-images:
     if: github.ref == 'refs/heads/main'
     needs: [test]
-    runs-on: ubuntu-latest
+    runs-on: skoda
     timeout-minutes: 90
     strategy:
       max-parallel: 5
@@ -281,7 +281,7 @@ jobs:
   notify-test-webhook:
     if: github.ref != 'refs/heads/main'
     needs: build-test-images
-    runs-on: ubuntu-latest
+    runs-on: skoda
     timeout-minutes: 5
     steps:
       - name: Invoke test deployment hook
@@ -296,7 +296,7 @@ jobs:
   notify-production-webhook:
     if: github.ref == 'refs/heads/main'
     needs: build-production-images
-    runs-on: ubuntu-latest
+    runs-on: skoda
     timeout-minutes: 5
     steps:
       - name: Invoke production deployment hook
