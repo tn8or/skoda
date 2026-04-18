@@ -8,7 +8,7 @@ aiohappyeyeballs==2.6.1
     # via aiohttp
 aiohttp==3.13.2
     # via myskoda
-aiomqtt==2.4.0
+aiomqtt==2.5.1
     # via myskoda
 aiosignal==1.4.0
     # via aiohttp
