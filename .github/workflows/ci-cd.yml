@@ -422,13 +422,29 @@ jobs:
     runs-on: skoda
     timeout-minutes: 5
     steps:
-      - name: Invoke test deployment hook
+      - name: Invoke deployment webhook (test flow)
         if: github.actor != 'dependabot[bot]'
-        uses: distributhor/workflow-webhook@v3
-        with:
-          webhook_url: ${{ secrets.TEST_WEBHOOK }}
-          webhook_auth_type: none
-          verbose: true
+        env:
+          WEBHOOK_URL: ${{ secrets.WEBHOOK }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+        run: |
+          payload=$(jq -nc \
+            --arg environment "test" \
+            --arg event_name "${{ github.event_name }}" \
+            --arg ref "${{ github.ref }}" \
+            --arg sha "${{ github.sha }}" \
+            --arg repo "${{ github.repository }}" \
+            --arg workflow "${{ github.workflow }}" \
+            --arg run_id "${{ github.run_id }}" \
+            '{environment:$environment,event_name:$event_name,ref:$ref,sha:$sha,repository:$repo,workflow:$workflow,run_id:$run_id}')
+
+          signature=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" -binary | xxd -p -c 256)
+
+          curl --fail-with-body --show-error --silent \
+            -X POST "$WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -H "X-Hub-Signature-256: sha256=$signature" \
+            -d "$payload"
 
   # Step 4b: Notify production webhook (after production builds)
   notify-production-webhook:
@@ -437,10 +453,26 @@ jobs:
     runs-on: skoda
     timeout-minutes: 5
     steps:
-      - name: Invoke production deployment hook
+      - name: Invoke deployment webhook (prod flow)
         if: github.actor != 'dependabot[bot]'
-        uses: distributhor/workflow-webhook@v3
-        with:
-          webhook_url: ${{ secrets.WEBHOOK }}
-          webhook_auth_type: none
-          verbose: true
+        env:
+          WEBHOOK_URL: ${{ secrets.WEBHOOK }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+        run: |
+          payload=$(jq -nc \
+            --arg environment "prod" \
+            --arg event_name "${{ github.event_name }}" \
+            --arg ref "${{ github.ref }}" \
+            --arg sha "${{ github.sha }}" \
+            --arg repo "${{ github.repository }}" \
+            --arg workflow "${{ github.workflow }}" \
+            --arg run_id "${{ github.run_id }}" \
+            '{environment:$environment,event_name:$event_name,ref:$ref,sha:$sha,repository:$repo,workflow:$workflow,run_id:$run_id}')
+
+          signature=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" -binary | xxd -p -c 256)
+
+          curl --fail-with-body --show-error --silent \
+            -X POST "$WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -H "X-Hub-Signature-256: sha256=$signature" \
+            -d "$payload"
