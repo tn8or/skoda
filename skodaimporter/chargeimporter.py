@@ -30,6 +30,15 @@ if TYPE_CHECKING:  # pragma: no cover - import only for type checkers
 VIN = ""
 # Global myskoda client; initialized in skodarunner() when myskoda is available...
 myskoda: Optional[Any] = None
+
+
+def _mask_vin(vin: str) -> str:
+    """Return a redacted VIN for safe logging."""
+    if not vin:
+        return "<empty>"
+    if len(vin) <= 6:
+        return "***"
+    return f"{vin[:3]}***{vin[-3:]}"
 my_logger = get_logger("skodaimporter")
 my_logger.warning("Starting the application...")
 last_event_timeout = 4 * 60 * 60
@@ -579,11 +588,16 @@ async def _resolve_vins_for_subscriptions() -> list[str]:
         )
         return []
 
-    msg = f"No vehicle VINs found in garage; falling back to SKODA_VEHICLE={fallback_vin}"
+    masked_fallback_vin = _mask_vin(fallback_vin)
+    msg = (
+        "No vehicle VINs found in garage; falling back to SKODA_VEHICLE="
+        f"{masked_fallback_vin}"
+    )
     my_logger.warning(msg)
     _degraded_reason = msg
     await save_log_to_db(
-        f"No garage VINs found; falling back to SKODA_VEHICLE={fallback_vin}"
+        "No garage VINs found; falling back to SKODA_VEHICLE="
+        f"{masked_fallback_vin}"
     )
 
     # MySkoda.connect() subscribes MQTT topics based on garage VINs.
@@ -594,10 +608,12 @@ async def _resolve_vins_for_subscriptions() -> list[str]:
             await myskoda.mqtt.disconnect()
             await myskoda.mqtt.connect(user.id, [fallback_vin])
             my_logger.info(
-                "MQTT reconnected with fallback VIN subscription: %s", fallback_vin
+                "MQTT reconnected with fallback VIN subscription: %s",
+                _mask_vin(fallback_vin),
             )
             await save_log_to_db(
-                f"MQTT reconnected with fallback VIN subscription: {fallback_vin}"
+                "MQTT reconnected with fallback VIN subscription: "
+                f"{_mask_vin(fallback_vin)}"
             )
     except Exception as e:  # noqa: BLE001
         my_logger.warning("Failed to rebind MQTT using fallback VIN: %s", e)
@@ -702,12 +718,12 @@ async def skodarunner() -> None:
                     await save_log_to_db(msg)
                     raise RuntimeError(msg)
                 for vin in vins:
-                    print(f"Vehicle VIN: {vin}")
+                    print(f"Vehicle VIN: {_mask_vin(vin)}")
                     VIN = vin
                     await get_skoda_update(VIN)
                 last_event_received = time.time()
                 if vins:
-                    my_logger.debug("Vehicle VIN: %s", vins[0])
+                    my_logger.debug("Vehicle VIN: %s", _mask_vin(vins[0]))
                 else:
                     my_logger.warning("No vehicle VINs found for account")
 
@@ -780,7 +796,7 @@ async def skodarunner() -> None:
                                     last_poll_ts = now_ts
                                     my_logger.info(
                                         "Polling fallback update completed for VIN %s",
-                                        VIN,
+                                        _mask_vin(VIN),
                                     )
                                 except Exception as poll_err:  # noqa: BLE001
                                     my_logger.warning(
