@@ -103,8 +103,7 @@ async def update_all_charges():
 async def root():
     conn, cur = await db_connect(my_logger)
     last_25_lines_joined = (
-        "Container logs are emitted to stdout. "
-        "Use kubectl logs for recent entries."
+        "Container logs are emitted to stdout. " "Use kubectl logs for recent entries."
     )
     try:
         await asyncio.get_event_loop().run_in_executor(

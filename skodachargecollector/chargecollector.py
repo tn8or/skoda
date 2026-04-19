@@ -1363,8 +1363,7 @@ def _verify_energy_with_soc(
 async def root():
     conn, cur = await db_connect(my_logger)
     last_25_lines_joined = (
-        "Container logs are emitted to stdout. "
-        "Use kubectl logs for recent entries."
+        "Container logs are emitted to stdout. " "Use kubectl logs for recent entries."
     )
     try:
         cur.execute("SELECT COUNT(*) FROM skoda.charge_hours")

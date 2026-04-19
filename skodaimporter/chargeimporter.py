@@ -601,7 +601,9 @@ def _build_health_response(conn, cur, connection_results):
         int(elapsed),
     )
 
-    last_lines_joined = "Container logs are emitted to stdout. Use kubectl logs for recent entries.\n"
+    last_lines_joined = (
+        "Container logs are emitted to stdout. Use kubectl logs for recent entries.\n"
+    )
 
     last_lines_joined += "\n\nConnection Health Check Results:\n"
     for check, result in connection_results.items():
