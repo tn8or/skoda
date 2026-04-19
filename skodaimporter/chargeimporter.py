@@ -1439,8 +1439,8 @@ async def skodarunner() -> None:
                             ):
                                 try:
                                     await get_skoda_update(VIN)
-                                    last_event_received = now_ts
-                                    last_poll_ts = now_ts
+                                    last_event_received = time.time()
+                                    last_poll_ts = last_event_received
                                     my_logger.info(
                                         "Polling fallback update completed for configured vehicle"
                                     )
@@ -1457,7 +1457,10 @@ async def skodarunner() -> None:
                             ):
                                 last_mqtt_recovery_attempt_ts = now_ts
                                 try:
-                                    await myskoda.mqtt.connect(user.id, vins)
+                                    await asyncio.wait_for(
+                                        myskoda.mqtt.connect(user.id, vins),
+                                        timeout=MYSKODA_CONNECT_TIMEOUT_SECONDS,
+                                    )
                                     # Poll once before re-subscribing so that
                                     # last_event_received is fresh before any
                                     # incoming MQTT event could also trigger
