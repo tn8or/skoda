@@ -54,6 +54,8 @@ _startup_status: str = "starting"
 _last_mqtt_error_msg: Optional[str] = None
 _last_mqtt_error_time: float = 0.0
 _polling_fallback_active: bool = False
+_last_known_soc: Optional[Any] = None
+_last_known_charged_range: Optional[Any] = None
 
 # Enhanced connection detection configuration
 CONNECTION_STATUS_TIMEOUT = 15 * 60  # 15 minutes for connection status checks
@@ -115,6 +117,173 @@ def _display_value(value: Any) -> str:
     if hasattr(value, "value"):
         return str(getattr(value, "value"))
     return str(value)
+
+
+def _extract_render_view_type_names(info_data: Any) -> set[str]:
+    """Collect view type names from MySkoda info composite renders."""
+    view_type_names: set[str] = set()
+    for render in getattr(info_data, "composite_renders", []) or []:
+        view_type = getattr(render, "view_type", None)
+        view_type_names.add(_display_value(view_type).upper())
+    return view_type_names
+
+
+def _derive_charging_hints_from_info(info_data: Any) -> tuple[Optional[bool], Optional[bool]]:
+    """Infer plugged-in/charging booleans from render view types when available."""
+    view_type_names = _extract_render_view_type_names(info_data)
+    if any(name.startswith("CHARGING_") for name in view_type_names):
+        return True, True
+    if any(name.startswith("PLUGGED_IN_") for name in view_type_names):
+        return True, False
+    return None, None
+
+
+def _extract_charged_range(charging: Any) -> Any:
+    """Best-effort charged/range extraction across myskoda payload variants."""
+    for attr in (
+        "charged_range",
+        "range",
+        "remaining_cruising_range_in_km",
+        "remaining_cruising_range_in_m",
+    ):
+        value = getattr(charging, attr, None)
+        if value is not None:
+            return value
+    return None
+
+
+def _extract_value_from_candidates(source: Any, candidates: tuple[str, ...]) -> Any:
+    """Read first non-null attribute from an object using candidate names."""
+    if source is None:
+        return None
+    for attr in candidates:
+        value = getattr(source, attr, None)
+        if value is not None:
+            return value
+    return None
+
+
+def _normalize_measurement_value(value: Any) -> Optional[Any]:
+    """Normalize empty/unknown measurement values to None."""
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip().lower() in {
+        "",
+        "none",
+        "null",
+        "unknown",
+    }:
+        return None
+    return value
+
+
+def _resolve_soc_and_range(
+    charging: Any,
+    info_data: Any,
+    health: Any,
+    status: Any,
+) -> tuple[Any, Any]:
+    """Resolve SOC and range using charging payload, info hints, and cache."""
+    global _last_known_soc, _last_known_charged_range
+
+    info_battery = getattr(info_data, "battery", None)
+
+    soc_value = _normalize_measurement_value(getattr(charging, "soc", None))
+    if soc_value is None:
+        soc_value = _normalize_measurement_value(
+            _extract_value_from_candidates(
+                info_data,
+                ("soc", "state_of_charge", "battery_level", "battery_percentage"),
+            )
+        )
+    if soc_value is None:
+        soc_value = _normalize_measurement_value(
+            _extract_value_from_candidates(
+                info_battery,
+                ("soc", "state_of_charge", "battery_level", "battery_percentage"),
+            )
+        )
+    if soc_value is None:
+        soc_value = _normalize_measurement_value(
+            _extract_value_from_candidates(
+                health,
+                ("soc", "state_of_charge", "battery_level", "battery_percentage"),
+            )
+        )
+    if soc_value is None:
+        soc_value = _normalize_measurement_value(
+            _extract_value_from_candidates(
+                status,
+                ("soc", "state_of_charge", "battery_level", "battery_percentage"),
+            )
+        )
+
+    charged_range_value = _normalize_measurement_value(_extract_charged_range(charging))
+    if charged_range_value is None:
+        charged_range_value = _normalize_measurement_value(
+            _extract_value_from_candidates(
+                info_data,
+                (
+                    "charged_range",
+                    "range",
+                    "remaining_range_km",
+                    "remaining_cruising_range_in_km",
+                    "remaining_cruising_range_in_m",
+                ),
+            )
+        )
+    if charged_range_value is None:
+        charged_range_value = _normalize_measurement_value(
+            _extract_value_from_candidates(
+                health,
+                (
+                    "charged_range",
+                    "range",
+                    "remaining_range_km",
+                    "remaining_cruising_range_in_km",
+                    "remaining_cruising_range_in_m",
+                ),
+            )
+        )
+
+    if soc_value is not None:
+        _last_known_soc = soc_value
+    elif _last_known_soc is not None:
+        soc_value = _last_known_soc
+
+    if charged_range_value is not None:
+        _last_known_charged_range = charged_range_value
+    elif _last_known_charged_range is not None:
+        charged_range_value = _last_known_charged_range
+
+    return soc_value, charged_range_value
+
+
+def _build_chargefinder_event_message(
+    charging_status: str,
+    plug_status: str,
+    soc: Any,
+    charged_range: Any,
+) -> Optional[str]:
+    """Build a rawlog line matching chargefinder's charging event patterns."""
+    status_upper = charging_status.upper()
+    plug_upper = plug_status.upper()
+
+    if "CHARGING" in status_upper:
+        operation_token = "ChargingState.CHARGING"
+    elif "PLUGGED" in plug_upper or "CONNECTED" in plug_upper:
+        operation_token = "ChargingState.READY_FOR_CHARGING"
+    elif "UNPLUGGED" in plug_upper or "DISCONNECTED" in plug_upper:
+        operation_token = "OperationName.STOP_CHARGING"
+    else:
+        return None
+
+    return (
+        "Charging event poll: "
+        f"{operation_token}, "
+        f"soc={soc}, "
+        f"charged_range={charged_range}"
+    )
 
 
 POLLING_FALLBACK_INTERVAL_SECONDS = _read_int_env(
@@ -604,19 +773,58 @@ async def get_skoda_update(vin: str) -> None:
         if hasattr(myskoda, "get_charging"):
             try:
                 charging = await myskoda.get_charging(vin)
+                inferred_plugged, inferred_charging = _derive_charging_hints_from_info(
+                    info_data
+                )
+
+                charging_status = _display_value(
+                    getattr(charging, "charging_status", None)
+                )
+                plug_status = _display_value(getattr(charging, "plug_status", None))
+
+                if charging_status == "unknown" and inferred_charging is not None:
+                    charging_status = (
+                        "INFERRED_CHARGING"
+                        if inferred_charging
+                        else "INFERRED_NOT_CHARGING"
+                    )
+                if plug_status == "unknown" and inferred_plugged is not None:
+                    plug_status = (
+                        "INFERRED_PLUGGED_IN"
+                        if inferred_plugged
+                        else "INFERRED_UNPLUGGED"
+                    )
+
+                soc_value, charged_range_value = _resolve_soc_and_range(
+                    charging,
+                    info_data,
+                    health,
+                    status,
+                )
+
                 snapshot_message = (
                     "Vehicle snapshot fetched: "
                     f"mileage_km={mileage}, "
-                    f"soc={getattr(charging, 'soc', None)}, "
-                    "charging_status="
-                    f"{_display_value(getattr(charging, 'charging_status', None))}, "
-                    "plug_status="
-                    f"{_display_value(getattr(charging, 'plug_status', None))}, "
+                    f"soc={soc_value}, "
+                    f"charging_status={charging_status}, "
+                    f"plug_status={plug_status}, "
                     "charging_state="
-                    f"{_display_value(getattr(charging, 'state', None))}"
+                    f"{_display_value(getattr(charging, 'state', None))}, "
+                    "render_hints="
+                    f"{','.join(sorted(_extract_render_view_type_names(info_data))) or 'none'}"
                 )
                 my_logger.info(snapshot_message)
                 await save_log_to_db(snapshot_message)
+
+                chargefinder_event_message = _build_chargefinder_event_message(
+                    charging_status,
+                    plug_status,
+                    soc_value,
+                    charged_range_value,
+                )
+                if chargefinder_event_message is not None:
+                    my_logger.info(chargefinder_event_message)
+                    await save_log_to_db(chargefinder_event_message)
             except Exception as e:  # noqa: BLE001
                 my_logger.warning("Fetching charging snapshot failed: %s", e)
                 await save_log_to_db(f"Fetching charging snapshot failed: {e}")

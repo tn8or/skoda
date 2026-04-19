@@ -185,6 +185,134 @@ async def test_get_skoda_update_logs_mileage_and_charging_snapshot():
 
 
 @pytest.mark.asyncio
+async def test_get_skoda_update_inferrs_charging_from_info_render_hints():
+    m = import_with_stubs()
+
+    class FakeViewType:
+        name = "CHARGING_LIGHT"
+
+    class FakeRender:
+        view_type = FakeViewType()
+
+    class FakeInfo:
+        composite_renders = [FakeRender()]
+
+    class FakeCharging:
+        soc = None
+        charging_status = None
+        plug_status = None
+        state = None
+
+    class FakeSkoda:
+        async def get_health(self, vin):
+            class H:
+                mileage_in_km = 45678
+
+            return H()
+
+        async def get_info(self, vin):
+            return FakeInfo()
+
+        async def get_status(self, vin):
+            return {"s": 1}
+
+        async def get_positions(self, vin):
+            class R:
+                positions = []
+
+            return R()
+
+        async def get_charging(self, vin):
+            return FakeCharging()
+
+    m.myskoda = FakeSkoda()
+    save_log = AsyncMock()
+    with patch("skodaimporter.chargeimporter.save_log_to_db", new=save_log):
+        await m.get_skoda_update("VIN")
+
+    messages = [call.args[0] for call in save_log.await_args_list if call.args]
+    assert any(
+        "Vehicle snapshot fetched: mileage_km=45678" in msg
+        and "charging_status=INFERRED_CHARGING" in msg
+        and "plug_status=INFERRED_PLUGGED_IN" in msg
+        and "render_hints=CHARGING_LIGHT" in msg
+        for msg in messages
+    )
+
+
+def test_build_chargefinder_event_message_charging():
+    m = import_with_stubs()
+    message = m._build_chargefinder_event_message(
+        "CHARGING", "CONNECTED", 61, 245
+    )
+    assert "ChargingState.CHARGING" in message
+    assert "soc=61" in message
+    assert "charged_range=245" in message
+
+
+def test_build_chargefinder_event_message_unknown_returns_none():
+    m = import_with_stubs()
+    message = m._build_chargefinder_event_message(
+        "unknown", "unknown", None, None
+    )
+    assert message is None
+
+
+@pytest.mark.asyncio
+async def test_get_skoda_update_logs_chargefinder_compatible_event():
+    m = import_with_stubs()
+
+    class FakeEnum:
+        def __init__(self, name):
+            self.name = name
+
+    class FakeCharging:
+        soc = 52
+        charged_range = 198
+        charging_status = FakeEnum("CHARGING")
+        plug_status = FakeEnum("CONNECTED")
+        state = FakeEnum("READY_FOR_CHARGING")
+
+    class FakeInfo:
+        composite_renders = []
+
+    class FakeSkoda:
+        async def get_health(self, vin):
+            class H:
+                mileage_in_km = 45678
+
+            return H()
+
+        async def get_info(self, vin):
+            return FakeInfo()
+
+        async def get_status(self, vin):
+            return {"s": 1}
+
+        async def get_positions(self, vin):
+            class R:
+                positions = []
+
+            return R()
+
+        async def get_charging(self, vin):
+            return FakeCharging()
+
+    m.myskoda = FakeSkoda()
+    save_log = AsyncMock()
+    with patch("skodaimporter.chargeimporter.save_log_to_db", new=save_log):
+        await m.get_skoda_update("VIN")
+
+    messages = [call.args[0] for call in save_log.await_args_list if call.args]
+    assert any(
+        "Charging event poll: ChargingState.CHARGING" in msg
+        and "soc=52" in msg
+        and "charged_range=198" in msg
+        for msg in messages
+    )
+
+
+@pytest.mark.asyncio
 async def test_on_event_triggers_on_change_access_service_event():
     m = import_with_stubs()
 
