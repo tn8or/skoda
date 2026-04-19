@@ -10,3 +10,4 @@ db
 .coverage
 .graylog-reference.md
 .graylog-reference.md
+sqldump/sqldump2.sql
