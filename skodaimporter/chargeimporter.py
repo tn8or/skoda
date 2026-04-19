@@ -57,6 +57,7 @@ _last_mqtt_error_time: float = 0.0
 _polling_fallback_active: bool = False
 _last_known_soc: Optional[Any] = None
 _last_known_charged_range: Optional[Any] = None
+_last_measurement_diag_log_time: float = 0.0
 
 # Enhanced connection detection configuration
 CONNECTION_STATUS_TIMEOUT = 15 * 60  # 15 minutes for connection status checks
@@ -70,6 +71,7 @@ MYSKODA_CONNECT_TIMEOUT_SECONDS = 60
 POLLING_FALLBACK_INTERVAL_SECONDS = 5 * 60
 MQTT_RECOVERY_ATTEMPT_INTERVAL_SECONDS = 10 * 60
 MQTT_ERROR_STALE_SECONDS = 120
+MEASUREMENT_DIAGNOSTIC_INTERVAL_SECONDS = 10 * 60
 
 
 def _read_int_env(name: str, default: int) -> int:
@@ -178,6 +180,17 @@ def _normalize_measurement_value(value: Any) -> Optional[Any]:
     return value
 
 
+def _normalize_range_km(value: Any) -> Optional[Any]:
+    """Normalize range values to km when payload provides meter-based values."""
+    normalized = _normalize_measurement_value(value)
+    if normalized is None:
+        return None
+    if isinstance(normalized, (int, float)) and normalized > 2000:
+        # EV range values above 2000 are expected to be meters in myskoda payloads.
+        return int(round(float(normalized) / 1000.0))
+    return normalized
+
+
 def _normalize_key_name(name: str) -> str:
     """Normalize field names for candidate matching across payload variants."""
     return "".join(ch for ch in name.lower() if ch.isalnum())
@@ -267,6 +280,186 @@ def _extract_number_from_text(payload: Any, patterns: tuple[str, ...]) -> Option
     return None
 
 
+def _collect_candidate_paths(
+    payload: Any,
+    *,
+    max_depth: int = 6,
+) -> list[str]:
+    """Collect nested key paths that look related to charge measurements."""
+    keywords = (
+        "soc",
+        "charge",
+        "range",
+        "battery",
+        "cruising",
+        "level",
+        "percent",
+    )
+    visited: set[int] = set()
+    paths: set[str] = set()
+
+    def _walk(node: Any, prefix: str, depth: int) -> None:
+        if depth < 0 or node is None:
+            return
+        node_id = id(node)
+        if node_id in visited:
+            return
+        visited.add(node_id)
+
+        if isinstance(node, dict):
+            for key, value in node.items():
+                key_str = str(key)
+                path = f"{prefix}.{key_str}" if prefix else key_str
+                low = key_str.lower()
+                if any(k in low for k in keywords):
+                    paths.add(path)
+                _walk(value, path, depth - 1)
+            return
+
+        if isinstance(node, (list, tuple, set)):
+            for idx, item in enumerate(node):
+                path = f"{prefix}[{idx}]" if prefix else f"[{idx}]"
+                _walk(item, path, depth - 1)
+            return
+
+        if hasattr(node, "model_dump"):
+            try:
+                _walk(node.model_dump(), prefix, depth - 1)
+                return
+            except Exception:  # noqa: BLE001
+                pass
+
+        if hasattr(node, "dict"):
+            try:
+                _walk(node.dict(), prefix, depth - 1)
+                return
+            except Exception:  # noqa: BLE001
+                pass
+
+        node_dict = getattr(node, "__dict__", None)
+        if isinstance(node_dict, dict):
+            _walk(node_dict, prefix, depth - 1)
+
+    _walk(payload, "", max_depth)
+    return sorted(paths)
+
+
+def _collect_candidate_values(
+    payload: Any,
+    *,
+    max_depth: int = 6,
+    max_items: int = 60,
+) -> dict[str, Any]:
+    """Collect key paths and raw values for charge-related measurement fields."""
+    keywords = (
+        "soc",
+        "charge",
+        "range",
+        "battery",
+        "cruising",
+        "level",
+        "percent",
+    )
+    visited: set[int] = set()
+    values: dict[str, Any] = {}
+
+    def _walk(node: Any, prefix: str, depth: int) -> None:
+        if depth < 0 or node is None or len(values) >= max_items:
+            return
+
+        node_id = id(node)
+        if node_id in visited:
+            return
+        visited.add(node_id)
+
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if len(values) >= max_items:
+                    return
+                key_str = str(key)
+                path = f"{prefix}.{key_str}" if prefix else key_str
+                low = key_str.lower()
+                if any(k in low for k in keywords):
+                    values[path] = value
+                _walk(value, path, depth - 1)
+            return
+
+        if isinstance(node, (list, tuple, set)):
+            for idx, item in enumerate(node):
+                if len(values) >= max_items:
+                    return
+                path = f"{prefix}[{idx}]" if prefix else f"[{idx}]"
+                _walk(item, path, depth - 1)
+            return
+
+        if hasattr(node, "model_dump"):
+            try:
+                _walk(node.model_dump(), prefix, depth - 1)
+                return
+            except Exception:  # noqa: BLE001
+                pass
+
+        if hasattr(node, "dict"):
+            try:
+                _walk(node.dict(), prefix, depth - 1)
+                return
+            except Exception:  # noqa: BLE001
+                pass
+
+        node_dict = getattr(node, "__dict__", None)
+        if isinstance(node_dict, dict):
+            _walk(node_dict, prefix, depth - 1)
+
+    _walk(payload, "", max_depth)
+    return values
+
+
+async def _maybe_log_measurement_diagnostics(
+    soc_value: Any,
+    charged_range_value: Any,
+    charging: Any,
+    info_data: Any,
+    health: Any,
+    status: Any,
+) -> None:
+    """Log available key paths to help map real SOC/range fields."""
+    global _last_measurement_diag_log_time
+
+    enable_diag = _read_bool_env("SKODA_LOG_MEASUREMENT_DIAGNOSTICS", True)
+    if not enable_diag:
+        return
+
+    if soc_value is not None and charged_range_value is not None:
+        return
+
+    now = time.time()
+    if now - _last_measurement_diag_log_time < MEASUREMENT_DIAGNOSTIC_INTERVAL_SECONDS:
+        return
+
+    payload_paths = {
+        "charging": _collect_candidate_paths(charging),
+        "info": _collect_candidate_paths(info_data),
+        "health": _collect_candidate_paths(health),
+        "status": _collect_candidate_paths(status),
+    }
+    payload_values = {
+        "charging": _collect_candidate_values(charging),
+        "info": _collect_candidate_values(info_data),
+        "health": _collect_candidate_values(health),
+        "status": _collect_candidate_values(status),
+    }
+    # Keep one compact line to avoid excessive log volume.
+    diag_message = (
+        "Measurement diagnostics: "
+        f"soc={soc_value}, charged_range={charged_range_value}, "
+        f"paths={json.dumps(payload_paths, default=str)}, "
+        f"values={json.dumps(payload_values, default=str)}"
+    )
+    my_logger.warning(diag_message)
+    await save_log_to_db(diag_message)
+    _last_measurement_diag_log_time = now
+
+
 def _resolve_soc_and_range(
     charging: Any,
     info_data: Any,
@@ -277,63 +470,54 @@ def _resolve_soc_and_range(
     global _last_known_soc, _last_known_charged_range
 
     info_battery = getattr(info_data, "battery", None)
+    soc_candidates = (
+        "soc",
+        "state_of_charge",
+        "state_of_charge_in_percent",
+        "battery_level",
+        "battery_percentage",
+    )
+    range_candidates = (
+        "charged_range",
+        "range",
+        "remaining_range_km",
+        "remaining_cruising_range_in_km",
+        "remaining_cruising_range_in_meters",
+        "remaining_cruising_range_in_m",
+    )
 
     soc_value = _normalize_measurement_value(getattr(charging, "soc", None))
     if soc_value is None:
         soc_value = _normalize_measurement_value(
-            _extract_value_from_candidates(
-                info_data,
-                ("soc", "state_of_charge", "battery_level", "battery_percentage"),
-            )
+            _extract_value_from_candidates(info_data, soc_candidates)
         )
     if soc_value is None:
         soc_value = _normalize_measurement_value(
-            _extract_value_from_candidates(
-                info_battery,
-                ("soc", "state_of_charge", "battery_level", "battery_percentage"),
-            )
+            _extract_value_from_candidates(info_battery, soc_candidates)
         )
     if soc_value is None:
         soc_value = _normalize_measurement_value(
-            _extract_value_from_candidates(
-                health,
-                ("soc", "state_of_charge", "battery_level", "battery_percentage"),
-            )
+            _extract_value_from_candidates(health, soc_candidates)
         )
     if soc_value is None:
         soc_value = _normalize_measurement_value(
-            _extract_value_from_candidates(
-                status,
-                ("soc", "state_of_charge", "battery_level", "battery_percentage"),
-            )
+            _extract_value_from_candidates(status, soc_candidates)
         )
     if soc_value is None:
         soc_value = _normalize_measurement_value(
-            _find_value_in_nested_payload(
-                charging,
-                ("soc", "state_of_charge", "battery_level", "battery_percentage"),
-            )
+            _find_value_in_nested_payload(charging, soc_candidates)
         )
     if soc_value is None:
         soc_value = _normalize_measurement_value(
-            _find_value_in_nested_payload(
-                info_data,
-                ("soc", "state_of_charge", "battery_level", "battery_percentage"),
-            )
+            _find_value_in_nested_payload(info_data, soc_candidates)
         )
     if soc_value is None:
         soc_value = _normalize_measurement_value(
-            _find_value_in_nested_payload(
-                health,
-                ("soc", "state_of_charge", "battery_level", "battery_percentage"),
-            )
+            _find_value_in_nested_payload(health, soc_candidates)
         )
     if soc_value is None:
         soc_value = _normalize_measurement_value(
-            _find_value_in_nested_payload(
-                status,
-                ("soc", "state_of_charge", "battery_level", "battery_percentage"),
-            )
+            _find_value_in_nested_payload(status, soc_candidates)
         )
     if soc_value is None:
         soc_value = _normalize_measurement_value(
@@ -342,6 +526,7 @@ def _resolve_soc_and_range(
                 (
                     r"soc\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
                     r"state[_\s]?of[_\s]?charge\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
+                    r"state[_\s]?of[_\s]?charge[_\s]?in[_\s]?percent\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
                 ),
             )
         )
@@ -352,93 +537,51 @@ def _resolve_soc_and_range(
                 (
                     r"soc\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
                     r"state[_\s]?of[_\s]?charge\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
+                    r"state[_\s]?of[_\s]?charge[_\s]?in[_\s]?percent\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
                 ),
             )
         )
 
-    charged_range_value = _normalize_measurement_value(_extract_charged_range(charging))
+    charged_range_value = _normalize_range_km(_extract_charged_range(charging))
     if charged_range_value is None:
-        charged_range_value = _normalize_measurement_value(
-            _extract_value_from_candidates(
-                info_data,
-                (
-                    "charged_range",
-                    "range",
-                    "remaining_range_km",
-                    "remaining_cruising_range_in_km",
-                    "remaining_cruising_range_in_m",
-                ),
-            )
+        charged_range_value = _normalize_range_km(
+            _extract_value_from_candidates(info_data, range_candidates)
         )
     if charged_range_value is None:
-        charged_range_value = _normalize_measurement_value(
-            _extract_value_from_candidates(
-                health,
-                (
-                    "charged_range",
-                    "range",
-                    "remaining_range_km",
-                    "remaining_cruising_range_in_km",
-                    "remaining_cruising_range_in_m",
-                ),
-            )
+        charged_range_value = _normalize_range_km(
+            _extract_value_from_candidates(health, range_candidates)
         )
     if charged_range_value is None:
-        charged_range_value = _normalize_measurement_value(
-            _find_value_in_nested_payload(
-                charging,
-                (
-                    "charged_range",
-                    "range",
-                    "remaining_range_km",
-                    "remaining_cruising_range_in_km",
-                    "remaining_cruising_range_in_m",
-                ),
-            )
+        charged_range_value = _normalize_range_km(
+            _find_value_in_nested_payload(charging, range_candidates)
         )
     if charged_range_value is None:
-        charged_range_value = _normalize_measurement_value(
-            _find_value_in_nested_payload(
-                info_data,
-                (
-                    "charged_range",
-                    "range",
-                    "remaining_range_km",
-                    "remaining_cruising_range_in_km",
-                    "remaining_cruising_range_in_m",
-                ),
-            )
+        charged_range_value = _normalize_range_km(
+            _find_value_in_nested_payload(info_data, range_candidates)
         )
     if charged_range_value is None:
-        charged_range_value = _normalize_measurement_value(
-            _find_value_in_nested_payload(
-                health,
-                (
-                    "charged_range",
-                    "range",
-                    "remaining_range_km",
-                    "remaining_cruising_range_in_km",
-                    "remaining_cruising_range_in_m",
-                ),
-            )
+        charged_range_value = _normalize_range_km(
+            _find_value_in_nested_payload(health, range_candidates)
         )
     if charged_range_value is None:
-        charged_range_value = _normalize_measurement_value(
+        charged_range_value = _normalize_range_km(
             _extract_number_from_text(
                 charging,
                 (
                     r"charged[_\s]?range\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
                     r"remaining[_\s]?cruising[_\s]?range[_\s]?in[_\s]?km\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
+                    r"remaining[_\s]?cruising[_\s]?range[_\s]?in[_\s]?meters\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
                 ),
             )
         )
     if charged_range_value is None:
-        charged_range_value = _normalize_measurement_value(
+        charged_range_value = _normalize_range_km(
             _extract_number_from_text(
                 info_data,
                 (
                     r"charged[_\s]?range\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
                     r"remaining[_\s]?cruising[_\s]?range[_\s]?in[_\s]?km\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
+                    r"remaining[_\s]?cruising[_\s]?range[_\s]?in[_\s]?meters\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
                 ),
             )
         )
@@ -492,6 +635,10 @@ MQTT_RECOVERY_ATTEMPT_INTERVAL_SECONDS = _read_int_env(
     MQTT_RECOVERY_ATTEMPT_INTERVAL_SECONDS,
 )
 FORCE_POLLING_FALLBACK = _read_bool_env("SKODA_FORCE_POLLING_FALLBACK", False)
+MEASUREMENT_DIAGNOSTIC_INTERVAL_SECONDS = _read_int_env(
+    "SKODA_MEASUREMENT_DIAGNOSTIC_INTERVAL_SECONDS",
+    MEASUREMENT_DIAGNOSTIC_INTERVAL_SECONDS,
+)
 
 
 class _MyskodaMqttLogHandler(logging.Handler):
@@ -507,6 +654,7 @@ class _MyskodaMqttLogHandler(logging.Handler):
 
 
 def _configure_myskoda_mqtt_logging() -> None:
+    """Attach one handler to capture myskoda MQTT auth/disconnect signals."""
     logger = logging.getLogger("myskoda.mqtt")
     logger.setLevel(logging.INFO)
     if any(isinstance(h, _MyskodaMqttLogHandler) for h in logger.handlers):
@@ -993,6 +1141,14 @@ async def get_skoda_update(vin: str) -> None:
                     )
 
                 soc_value, charged_range_value = _resolve_soc_and_range(
+                    charging,
+                    info_data,
+                    health,
+                    status,
+                )
+                await _maybe_log_measurement_diagnostics(
+                    soc_value,
+                    charged_range_value,
                     charging,
                     info_data,
                     health,

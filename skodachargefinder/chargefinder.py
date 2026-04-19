@@ -78,17 +78,25 @@ class ChargeFinder:
         raise ValueError("No valid charge operation found in log message")
 
     def parse_charge_values(self, log_message: str) -> Tuple[str, str]:
-        """Parse SOC and charged range values from a log message."""
+        """Parse SOC and charged range values from a log message.
+
+        Skips updates when the parsed value is the literal string 'None'
+        or 'null', preserving the last known numeric value instead.
+        """
         soc = self.last_soc
         charged_range = self.last_range
 
         if "soc=" in log_message:
-            soc = log_message.split("soc=")[1].split(",")[0]
-            self.last_soc = soc
+            parsed_soc = log_message.split("soc=")[1].split(",")[0].strip()
+            if parsed_soc.lower() not in ("none", "null", ""):
+                soc = parsed_soc
+                self.last_soc = soc
 
         if "charged_range=" in log_message:
-            charged_range = log_message.split("charged_range=")[1].split(",")[0]
-            self.last_range = charged_range
+            parsed_range = log_message.split("charged_range=")[1].split(",")[0].strip()
+            if parsed_range.lower() not in ("none", "null", ""):
+                charged_range = parsed_range
+                self.last_range = charged_range
 
         return soc, charged_range
 

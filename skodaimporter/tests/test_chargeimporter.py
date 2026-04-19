@@ -862,7 +862,8 @@ async def test_root_returns_healthy_when_polling_fallback_active_and_mqtt_down()
     m._polling_fallback_active = True
     m._degraded_reason = "polling fallback active"
     m.VIN = "VIN123"
-    m._bg_task = asyncio.create_task(asyncio.sleep(60))
+    m._bg_task = MagicMock()
+    m._bg_task.done.return_value = False
 
     fake_conn = MagicMock()
     fake_cur = MagicMock()
@@ -893,9 +894,6 @@ async def test_root_returns_healthy_when_polling_fallback_active_and_mqtt_down()
 
     assert response.body == b"polling-ok"
 
-    m._bg_task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await m._bg_task
 
 
 @pytest.mark.asyncio
@@ -938,7 +936,7 @@ async def test_skodarunner_force_polling_fallback_skips_mqtt_connect_and_recover
     ):
         with patch(
             "skodaimporter.chargeimporter.get_skoda_update",
-            new=AsyncMock(side_effect=[None, asyncio.CancelledError()]),
+            new=AsyncMock(side_effect=asyncio.CancelledError()),
         ):
             with patch(
                 "skodaimporter.chargeimporter.save_log_to_db",
