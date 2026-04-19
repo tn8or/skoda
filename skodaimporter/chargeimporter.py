@@ -770,11 +770,13 @@ async def skodarunner() -> None:
                 mqtt_ready = False
                 if FORCE_POLLING_FALLBACK:
                     my_logger.warning(
-                        "SKODA_FORCE_POLLING_FALLBACK enabled; skipping MQTT connect"
+                        "SKODA_FORCE_POLLING_FALLBACK enabled; enforcing polling-only mode"
                     )
                     await save_log_to_db(
-                        "SKODA_FORCE_POLLING_FALLBACK enabled; skipping MQTT connect"
+                        "SKODA_FORCE_POLLING_FALLBACK enabled; enforcing polling-only mode"
                     )
+                    if myskoda.mqtt is not None:
+                        myskoda.mqtt = None
                 elif myskoda.mqtt is not None:
                     try:
                         await asyncio.wait_for(
