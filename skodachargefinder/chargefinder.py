@@ -9,7 +9,8 @@ from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 
 import mariadb
-from commons import CHARGECOLLECTOR_URL, SLEEPTIME, db_connect, get_logger, pull_api
+from commons import (CHARGECOLLECTOR_URL, SLEEPTIME, db_connect, get_logger,
+                     pull_api)
 
 
 @dataclass

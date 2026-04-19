@@ -16,8 +16,7 @@ from aiohttp import ClientSession
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import PlainTextResponse
 
-from commons import (CHARGEFINDER_URL, db_connect, get_logger, load_secret,
-                     pull_api)
+from commons import CHARGEFINDER_URL, db_connect, get_logger, load_secret, pull_api
 
 # Optional type-only imports to keep runtime import free when myskoda is missing
 if TYPE_CHECKING:  # pragma: no cover - import only for type checkers
@@ -40,6 +39,8 @@ def _mask_vin(vin: str) -> str:
     if len(vin) <= 6:
         return "***"
     return f"{vin[:3]}***{vin[-3:]}"
+
+
 my_logger = get_logger("skodaimporter")
 my_logger.warning("Starting the application...")
 last_event_timeout = 4 * 60 * 60
@@ -131,7 +132,9 @@ def _extract_render_view_type_names(info_data: Any) -> set[str]:
     return view_type_names
 
 
-def _derive_charging_hints_from_info(info_data: Any) -> tuple[Optional[bool], Optional[bool]]:
+def _derive_charging_hints_from_info(
+    info_data: Any,
+) -> tuple[Optional[bool], Optional[bool]]:
     """Infer plugged-in/charging booleans from render view types when available."""
     view_type_names = _extract_render_view_type_names(info_data)
     if any(name.startswith("CHARGING_") for name in view_type_names):
@@ -791,9 +794,8 @@ def check_mqtt_connection_state() -> bool:
         if is_connected and _last_mqtt_error_msg:
             recent_err = time.time() - _last_mqtt_error_time
             low = _last_mqtt_error_msg.lower()
-            if (
-                recent_err < MQTT_ERROR_STALE_SECONDS
-                and ("not authorized" in low or "connection lost" in low)
+            if recent_err < MQTT_ERROR_STALE_SECONDS and (
+                "not authorized" in low or "connection lost" in low
             ):
                 my_logger.warning(
                     "MQTT listener is running but recent broker error indicates disconnected state: %s",
@@ -1234,7 +1236,9 @@ async def _resolve_vins_for_subscriptions() -> list[str]:
     msg = "No vehicle VINs found in garage; falling back to configured SKODA_VEHICLE"
     my_logger.warning(msg)
     _degraded_reason = msg
-    await save_log_to_db("No garage VINs found; falling back to configured SKODA_VEHICLE")
+    await save_log_to_db(
+        "No garage VINs found; falling back to configured SKODA_VEHICLE"
+    )
 
     # MySkoda.connect() subscribes MQTT topics based on garage VINs.
     # If that list is empty we must rebind MQTT with the fallback VIN.
@@ -1446,8 +1450,7 @@ async def skodarunner() -> None:
 
                             if (
                                 not FORCE_POLLING_FALLBACK
-                                and
-                                myskoda.mqtt is not None
+                                and myskoda.mqtt is not None
                                 and now_ts - last_mqtt_recovery_attempt_ts
                                 >= MQTT_RECOVERY_ATTEMPT_INTERVAL_SECONDS
                             ):
@@ -1525,10 +1528,7 @@ def _build_health_response(conn, cur, connection_results):
     )
 
     if _degraded_reason:
-        last_lines_joined += (
-            "\nStatus: DEGRADED\n"
-            f"Reason: {_degraded_reason}\n"
-        )
+        last_lines_joined += "\nStatus: DEGRADED\n" f"Reason: {_degraded_reason}\n"
 
     if _polling_fallback_active:
         last_lines_joined += (

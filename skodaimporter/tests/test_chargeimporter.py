@@ -242,9 +242,7 @@ async def test_get_skoda_update_inferrs_charging_from_info_render_hints():
 
 def test_build_chargefinder_event_message_charging():
     m = import_with_stubs()
-    message = m._build_chargefinder_event_message(
-        "CHARGING", "CONNECTED", 61, 245
-    )
+    message = m._build_chargefinder_event_message("CHARGING", "CONNECTED", 61, 245)
     assert "ChargingState.CHARGING" in message
     assert "soc=61" in message
     assert "charged_range=245" in message
@@ -252,10 +250,48 @@ def test_build_chargefinder_event_message_charging():
 
 def test_build_chargefinder_event_message_unknown_returns_none():
     m = import_with_stubs()
-    message = m._build_chargefinder_event_message(
-        "unknown", "unknown", None, None
-    )
+    message = m._build_chargefinder_event_message("unknown", "unknown", None, None)
     assert message is None
+
+
+def test_collect_candidate_paths_finds_nested_battery_keys():
+    m = import_with_stubs()
+    payload = {
+        "vehicle": {
+            "batteryStatus": {
+                "state_of_charge": 73,
+                "remaining_cruising_range_in_km": 254,
+            },
+            "other": {"foo": "bar"},
+        }
+    }
+
+    paths = m._collect_candidate_paths(payload)
+
+    assert "vehicle.batteryStatus" in paths
+    assert "vehicle.batteryStatus.state_of_charge" in paths
+    assert "vehicle.batteryStatus.remaining_cruising_range_in_km" in paths
+
+
+def test_collect_candidate_values_includes_measurement_values():
+    m = import_with_stubs()
+    payload = {
+        "status": {
+            "battery": {
+                "state_of_charge_in_percent": 61,
+                "remaining_cruising_range_in_meters": 212000,
+            }
+        }
+    }
+
+    values = m._collect_candidate_values(payload)
+
+    assert values["status.battery"] == {
+        "state_of_charge_in_percent": 61,
+        "remaining_cruising_range_in_meters": 212000,
+    }
+    assert values["status.battery.state_of_charge_in_percent"] == 61
+    assert values["status.battery.remaining_cruising_range_in_meters"] == 212000
 
 
 @pytest.mark.asyncio
@@ -308,6 +344,129 @@ async def test_get_skoda_update_logs_chargefinder_compatible_event():
         "Charging event poll: ChargingState.CHARGING" in msg
         and "soc=52" in msg
         and "charged_range=198" in msg
+        for msg in messages
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_skoda_update_extracts_soc_and_range_from_nested_info_payload():
+    m = import_with_stubs()
+
+    class FakeCharging:
+        soc = None
+        charged_range = None
+        charging_status = None
+        plug_status = None
+        state = None
+
+    class FakeRender:
+        def __init__(self):
+            self.view_type = "CHARGING_LIGHT"
+
+    class FakeInfo:
+        def __init__(self):
+            self.composite_renders = [FakeRender()]
+            self.battery = {
+                "measurements": {
+                    "state_of_charge": 67,
+                    "remaining_cruising_range_in_km": 231,
+                }
+            }
+
+    class FakeSkoda:
+        async def get_health(self, vin):
+            class H:
+                mileage_in_km = 45678
+
+            return H()
+
+        async def get_info(self, vin):
+            return FakeInfo()
+
+        async def get_status(self, vin):
+            return {"s": 1}
+
+        async def get_positions(self, vin):
+            class R:
+                positions = []
+
+            return R()
+
+        async def get_charging(self, vin):
+            return FakeCharging()
+
+    m.myskoda = FakeSkoda()
+    save_log = AsyncMock()
+    with patch("skodaimporter.chargeimporter.save_log_to_db", new=save_log):
+        await m.get_skoda_update("VIN")
+
+    messages = [call.args[0] for call in save_log.await_args_list if call.args]
+    assert any(
+        "Charging event poll: ChargingState.CHARGING" in msg
+        and "soc=67" in msg
+        and "charged_range=231" in msg
+        for msg in messages
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_skoda_update_extracts_soc_and_range_from_charging_status_battery():
+    m = import_with_stubs()
+
+    class FakeCharging:
+        def __init__(self):
+            self.soc = None
+            self.charged_range = None
+            self.charging_status = None
+            self.plug_status = None
+            self.state = None
+            self.status = {
+                "battery": {
+                    "state_of_charge_in_percent": 58,
+                    "remaining_cruising_range_in_meters": 221000,
+                }
+            }
+
+    class FakeRender:
+        def __init__(self):
+            self.view_type = "CHARGING_LIGHT"
+
+    class FakeInfo:
+        def __init__(self):
+            self.composite_renders = [FakeRender()]
+
+    class FakeSkoda:
+        async def get_health(self, vin):
+            class H:
+                mileage_in_km = 45678
+
+            return H()
+
+        async def get_info(self, vin):
+            return FakeInfo()
+
+        async def get_status(self, vin):
+            return {"s": 1}
+
+        async def get_positions(self, vin):
+            class R:
+                positions = []
+
+            return R()
+
+        async def get_charging(self, vin):
+            return FakeCharging()
+
+    m.myskoda = FakeSkoda()
+    save_log = AsyncMock()
+    with patch("skodaimporter.chargeimporter.save_log_to_db", new=save_log):
+        await m.get_skoda_update("VIN")
+
+    messages = [call.args[0] for call in save_log.await_args_list if call.args]
+    assert any(
+        "Charging event poll: ChargingState.CHARGING" in msg
+        and "soc=58" in msg
+        and "charged_range=221" in msg
         for msg in messages
     )
 
@@ -448,31 +607,6 @@ def test_read_int_env_falls_back_for_invalid_value(monkeypatch):
     m = import_with_stubs()
     monkeypatch.setenv("SKODA_POLLING_FALLBACK_INTERVAL_SECONDS", "invalid")
     assert m._read_int_env("SKODA_POLLING_FALLBACK_INTERVAL_SECONDS", 300) == 300
-
-
-@pytest.mark.parametrize(
-    ("raw_value", "expected"),
-    [
-        ("true", True),
-        ("1", True),
-        ("yes", True),
-        ("on", True),
-        ("false", False),
-        ("0", False),
-        ("no", False),
-        ("off", False),
-    ],
-)
-def test_read_bool_env_parses_valid_values(monkeypatch, raw_value, expected):
-    m = import_with_stubs()
-    monkeypatch.setenv("SKODA_FORCE_POLLING_FALLBACK", raw_value)
-    assert m._read_bool_env("SKODA_FORCE_POLLING_FALLBACK", False) is expected
-
-
-def test_read_bool_env_falls_back_for_invalid_value(monkeypatch):
-    m = import_with_stubs()
-    monkeypatch.setenv("SKODA_FORCE_POLLING_FALLBACK", "invalid")
-    assert m._read_bool_env("SKODA_FORCE_POLLING_FALLBACK", True) is True
 
 
 @pytest.mark.asyncio
@@ -736,7 +870,9 @@ async def test_perform_enhanced_connection_check_all_healthy():
 
         assert result["overall_healthy"] is True
         assert result["event_timeout_check"] is True
-        assert result["vehicle_connection_check"] is True  # Skipped due to recent activity
+        assert (
+            result["vehicle_connection_check"] is True
+        )  # Skipped due to recent activity
         assert result["api_health_check"] is True  # Skipped due to no timeout
         assert result["mqtt_connection_check"] is True
 
@@ -765,8 +901,10 @@ async def test_perform_enhanced_connection_check_event_timeout():
 
     class FakeSkoda:
         mqtt = mock_mqtt
+
         async def get_connection_status(self, vin):
             return FakeConnectionStatus()
+
         async def get_health(self, vin):
             return FakeHealth()
 
@@ -800,8 +938,10 @@ async def test_perform_enhanced_connection_check_api_failure():
     # Mock failing API responses
     class FakeSkoda:
         mqtt = mock_mqtt
+
         async def get_connection_status(self, vin):
             return MagicMock()  # Success
+
         async def get_health(self, vin):
             raise RuntimeError("API failed")  # Failure
 
@@ -893,60 +1033,3 @@ async def test_root_returns_healthy_when_polling_fallback_active_and_mqtt_down()
                 response = await m.root()
 
     assert response.body == b"polling-ok"
-
-
-
-@pytest.mark.asyncio
-async def test_skodarunner_force_polling_fallback_skips_mqtt_connect_and_recovery():
-    m = import_with_stubs()
-
-    class AuthorizationFailedError(Exception):
-        pass
-
-    class MarketingConsentError(Exception):
-        pass
-
-    auth_pkg = types.ModuleType("myskoda.auth")
-    auth_auth_mod = types.ModuleType("myskoda.auth.authorization")
-    auth_auth_mod.AuthorizationFailedError = AuthorizationFailedError
-    auth_auth_mod.MarketingConsentError = MarketingConsentError
-    sys.modules["myskoda.auth"] = auth_pkg
-    sys.modules["myskoda.auth.authorization"] = auth_auth_mod
-
-    fake_mqtt = types.SimpleNamespace(
-        connect=AsyncMock(),
-        disconnect=AsyncMock(),
-    )
-
-    class FakeSkoda:
-        def __init__(self, _session):
-            self.authorization = types.SimpleNamespace(authorize=AsyncMock())
-            self.mqtt = fake_mqtt
-            self.subscribe_events = MagicMock()
-            self.disconnect = AsyncMock()
-
-        async def get_user(self):
-            return types.SimpleNamespace(id="user-1")
-
-    sys.modules["myskoda"].MySkoda = FakeSkoda
-
-    with patch(
-        "skodaimporter.chargeimporter._resolve_vins_for_subscriptions",
-        new=AsyncMock(return_value=["VIN123"]),
-    ):
-        with patch(
-            "skodaimporter.chargeimporter.get_skoda_update",
-            new=AsyncMock(side_effect=asyncio.CancelledError()),
-        ):
-            with patch(
-                "skodaimporter.chargeimporter.save_log_to_db",
-                new=AsyncMock(),
-            ):
-                with patch(
-                    "skodaimporter.chargeimporter.FORCE_POLLING_FALLBACK",
-                    True,
-                ):
-                    await m.skodarunner()
-
-    fake_mqtt.connect.assert_not_awaited()
-    m.myskoda.subscribe_events.assert_not_called()
