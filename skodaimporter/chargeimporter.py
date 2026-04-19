@@ -788,8 +788,7 @@ async def skodarunner() -> None:
                                     last_event_received = now_ts
                                     last_poll_ts = now_ts
                                     my_logger.info(
-                                        "Polling fallback update completed for VIN %s",
-                                        _mask_vin(VIN),
+                                        "Polling fallback update completed for configured vehicle"
                                     )
                                 except Exception as poll_err:  # noqa: BLE001
                                     my_logger.warning(
