@@ -806,9 +806,13 @@ async def chargerunner():
 
 def read_last_n_lines(filename: str, n: int) -> list:
     """Read the last n lines from a file."""
-    with open(filename, "r", encoding="utf-8") as file:
-        lines = file.readlines()
-        return lines[-n:]
+    try:
+        with open(filename, "r", encoding="utf-8") as file:
+            lines = file.readlines()
+            return lines[-n:]
+    except (FileNotFoundError, OSError):
+        # In containers we log to stdout; local file logs may not exist.
+        return []
 
 
 @asynccontextmanager
@@ -1358,8 +1362,9 @@ def _verify_energy_with_soc(
 @app.get("/")
 async def root():
     conn, cur = await db_connect(my_logger)
-    last_25_lines = read_last_n_lines("app.log", 15)
-    last_25_lines_joined = "".join(last_25_lines)
+    last_25_lines_joined = (
+        "Container logs are emitted to stdout. " "Use kubectl logs for recent entries."
+    )
     try:
         cur.execute("SELECT COUNT(*) FROM skoda.charge_hours")
         count = cur.fetchone()[0]

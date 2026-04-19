@@ -582,9 +582,13 @@ async def skodarunner() -> None:
 
 
 def read_last_n_lines(filename: str, n: int):
-    with open(filename, "r", encoding="utf-8") as file:
-        lines = file.readlines()
-        return lines[-n:]
+    try:
+        with open(filename, "r", encoding="utf-8") as file:
+            lines = file.readlines()
+            return lines[-n:]
+    except (FileNotFoundError, OSError):
+        # In containers we log to stdout; local file logs may not exist.
+        return []
 
 
 app = FastAPI()
@@ -597,8 +601,9 @@ def _build_health_response(conn, cur, connection_results):
         int(elapsed),
     )
 
-    last_lines = read_last_n_lines("app.log", 15)
-    last_lines_joined = "".join(last_lines)
+    last_lines_joined = (
+        "Container logs are emitted to stdout. Use kubectl logs for recent entries.\n"
+    )
 
     last_lines_joined += "\n\nConnection Health Check Results:\n"
     for check, result in connection_results.items():
