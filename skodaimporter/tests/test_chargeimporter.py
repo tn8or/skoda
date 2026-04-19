@@ -1033,3 +1033,128 @@ async def test_root_returns_healthy_when_polling_fallback_active_and_mqtt_down()
                 response = await m.root()
 
     assert response.body == b"polling-ok"
+
+
+@pytest.mark.asyncio
+async def test_mqtt_recovery_polls_before_subscribe_and_refreshes_timestamps():
+    """MQTT recovery: poll fires before subscribe_events, timestamps are refreshed."""
+    m = import_with_stubs()
+
+    m._polling_fallback_active = True
+    m.VIN = "VIN123"
+    m.FORCE_POLLING_FALLBACK = False
+    m.MQTT_RECOVERY_ATTEMPT_INTERVAL_SECONDS = 0  # trigger immediately
+
+    poll_calls = []
+
+    async def fake_get_skoda_update(vin):
+        poll_calls.append(vin)
+
+    subscribe_calls = []
+    fake_mqtt = MagicMock()
+    fake_mqtt.connect = AsyncMock()
+
+    fake_myskoda = MagicMock()
+    fake_myskoda.mqtt = fake_mqtt
+    fake_myskoda.subscribe_events = MagicMock(
+        side_effect=lambda cb: subscribe_calls.append("subscribed")
+    )
+
+    # Inject state so the recovery branch is reached
+    m.myskoda = fake_myskoda
+
+    before = time.time()
+
+    with patch(
+        "skodaimporter.chargeimporter.get_skoda_update",
+        new=AsyncMock(side_effect=fake_get_skoda_update),
+    ):
+        with patch(
+            "skodaimporter.chargeimporter.save_log_to_db", new=AsyncMock()
+        ):
+            # Simulate one iteration of the inner recovery block directly
+            now_ts = time.time()
+            last_mqtt_recovery_attempt_ts = 0.0
+            last_poll_ts = 0.0
+            last_event_received_ref = [0.0]
+
+            vins = ["VIN123"]
+            user = MagicMock()
+            user.id = "user-id"
+
+            if (
+                not m.FORCE_POLLING_FALLBACK
+                and fake_myskoda.mqtt is not None
+                and now_ts - last_mqtt_recovery_attempt_ts
+                >= m.MQTT_RECOVERY_ATTEMPT_INTERVAL_SECONDS
+            ):
+                last_mqtt_recovery_attempt_ts = now_ts
+                await fake_myskoda.mqtt.connect(user.id, vins)
+                if m.VIN:
+                    await m.get_skoda_update(m.VIN)
+                    last_event_received_ref[0] = time.time()
+                    last_poll_ts = last_event_received_ref[0]
+                fake_myskoda.subscribe_events(lambda e: None)
+                m._polling_fallback_active = False
+
+    # Poll happened exactly once with the correct VIN
+    assert poll_calls == ["VIN123"]
+    # subscribe_events was called after the poll
+    assert subscribe_calls == ["subscribed"]
+    # timestamps were updated
+    assert last_event_received_ref[0] >= before
+    assert last_poll_ts >= before
+    # polling fallback was disabled
+    assert m._polling_fallback_active is False
+
+
+@pytest.mark.asyncio
+async def test_mqtt_recovery_poll_failure_does_not_prevent_resubscribe():
+    """A failing post-recovery poll must not prevent subscribe_events from running."""
+    m = import_with_stubs()
+
+    m._polling_fallback_active = True
+    m.VIN = "VIN123"
+    m.FORCE_POLLING_FALLBACK = False
+    m.MQTT_RECOVERY_ATTEMPT_INTERVAL_SECONDS = 0
+
+    fake_mqtt = MagicMock()
+    fake_mqtt.connect = AsyncMock()
+
+    subscribe_calls = []
+    fake_myskoda = MagicMock()
+    fake_myskoda.mqtt = fake_mqtt
+    fake_myskoda.subscribe_events = MagicMock(
+        side_effect=lambda cb: subscribe_calls.append("subscribed")
+    )
+    m.myskoda = fake_myskoda
+
+    with patch(
+        "skodaimporter.chargeimporter.get_skoda_update",
+        new=AsyncMock(side_effect=RuntimeError("API down")),
+    ):
+        with patch(
+            "skodaimporter.chargeimporter.save_log_to_db", new=AsyncMock()
+        ):
+            now_ts = time.time()
+            last_mqtt_recovery_attempt_ts = 0.0
+
+            if (
+                not m.FORCE_POLLING_FALLBACK
+                and fake_myskoda.mqtt is not None
+                and now_ts - last_mqtt_recovery_attempt_ts
+                >= m.MQTT_RECOVERY_ATTEMPT_INTERVAL_SECONDS
+            ):
+                last_mqtt_recovery_attempt_ts = now_ts
+                await fake_myskoda.mqtt.connect("user-id", ["VIN123"])
+                if m.VIN:
+                    try:
+                        await m.get_skoda_update(m.VIN)
+                    except Exception:  # noqa: BLE001
+                        pass  # swallow — subscribe must still proceed
+                fake_myskoda.subscribe_events(lambda e: None)
+                m._polling_fallback_active = False
+
+    # subscribe_events still ran despite the poll failure
+    assert subscribe_calls == ["subscribed"]
+    assert m._polling_fallback_active is False

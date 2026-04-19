@@ -16,7 +16,8 @@ from aiohttp import ClientSession
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import PlainTextResponse
 
-from commons import CHARGEFINDER_URL, db_connect, get_logger, load_secret, pull_api
+from commons import (CHARGEFINDER_URL, db_connect, get_logger, load_secret,
+                     pull_api)
 
 # Optional type-only imports to keep runtime import free when myskoda is missing
 if TYPE_CHECKING:  # pragma: no cover - import only for type checkers
@@ -1457,6 +1458,23 @@ async def skodarunner() -> None:
                                 last_mqtt_recovery_attempt_ts = now_ts
                                 try:
                                     await myskoda.mqtt.connect(user.id, vins)
+                                    # Poll once before re-subscribing so that
+                                    # last_event_received is fresh before any
+                                    # incoming MQTT event could also trigger
+                                    # get_skoda_update concurrently.
+                                    if VIN:
+                                        try:
+                                            await get_skoda_update(VIN)
+                                            last_event_received = time.time()
+                                            last_poll_ts = last_event_received
+                                            my_logger.info(
+                                                "Post-MQTT-recovery poll completed"
+                                            )
+                                        except Exception as post_poll_err:  # noqa: BLE001
+                                            my_logger.warning(
+                                                "Post-MQTT-recovery poll failed: %s",
+                                                post_poll_err,
+                                            )
                                     myskoda.subscribe_events(on_event)
                                     _polling_fallback_active = False
                                     _degraded_reason = None
