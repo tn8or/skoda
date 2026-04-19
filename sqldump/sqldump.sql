@@ -47,7 +47,7 @@ CREATE TABLE `charge_events` (
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-/*!50003 CREATE*/ /*!50017 DEFINER=`skoda`@`%`*/ /*!50003 TRIGGER before_insert_uuid
+/*!50003 CREATE TRIGGER before_insert_uuid
 BEFORE INSERT ON skoda.charge_events
 FOR EACH ROW
 SET NEW.id = UUID() */;;
@@ -90,7 +90,7 @@ CREATE TABLE `charge_hours` (
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-/*!50003 CREATE*/ /*!50017 DEFINER=`skoda`@`%`*/ /*!50003 TRIGGER before_insert_event_uuid
+/*!50003 CREATE TRIGGER before_insert_event_uuid
 BEFORE INSERT ON skoda.charge_hours
 FOR EACH ROW
 SET NEW.id = UUID() */;;

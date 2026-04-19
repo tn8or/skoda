@@ -2,6 +2,7 @@ import asyncio
 import importlib
 import json
 import logging
+import re
 import time
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Optional
@@ -15,8 +16,7 @@ from aiohttp import ClientSession
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import PlainTextResponse
 
-from commons import (CHARGEFINDER_URL, db_connect, get_logger, load_secret,
-                     pull_api)
+from commons import CHARGEFINDER_URL, db_connect, get_logger, load_secret, pull_api
 
 # Optional type-only imports to keep runtime import free when myskoda is missing
 if TYPE_CHECKING:  # pragma: no cover - import only for type checkers
@@ -39,6 +39,8 @@ def _mask_vin(vin: str) -> str:
     if len(vin) <= 6:
         return "***"
     return f"{vin[:3]}***{vin[-3:]}"
+
+
 my_logger = get_logger("skodaimporter")
 my_logger.warning("Starting the application...")
 last_event_timeout = 4 * 60 * 60
@@ -54,6 +56,9 @@ _startup_status: str = "starting"
 _last_mqtt_error_msg: Optional[str] = None
 _last_mqtt_error_time: float = 0.0
 _polling_fallback_active: bool = False
+_last_known_soc: Optional[Any] = None
+_last_known_charged_range: Optional[Any] = None
+_last_measurement_diag_log_time: float = 0.0
 
 # Enhanced connection detection configuration
 CONNECTION_STATUS_TIMEOUT = 15 * 60  # 15 minutes for connection status checks
@@ -67,6 +72,576 @@ MYSKODA_CONNECT_TIMEOUT_SECONDS = 60
 POLLING_FALLBACK_INTERVAL_SECONDS = 5 * 60
 MQTT_RECOVERY_ATTEMPT_INTERVAL_SECONDS = 10 * 60
 MQTT_ERROR_STALE_SECONDS = 120
+MEASUREMENT_DIAGNOSTIC_INTERVAL_SECONDS = 10 * 60
+
+
+def _read_int_env(name: str, default: int) -> int:
+    """Read a positive integer from environment variables with fallback."""
+    raw = load_secret(name)
+    if not raw:
+        return default
+    try:
+        parsed = int(raw)
+        if parsed <= 0:
+            raise ValueError("must be > 0")
+        return parsed
+    except (TypeError, ValueError):
+        my_logger.warning(
+            "Invalid %s value provided, using default %s",
+            name,
+            default,
+        )
+        return default
+
+
+def _read_bool_env(name: str, default: bool = False) -> bool:
+    """Read a boolean environment/secrets value with safe defaults."""
+    raw = load_secret(name)
+    if raw is None:
+        return default
+    normalized = raw.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    my_logger.warning(
+        "Invalid %s value provided, using default %s",
+        name,
+        default,
+    )
+    return default
+
+
+def _display_value(value: Any) -> str:
+    """Render enum-like values in a stable, concise string form."""
+    if value is None:
+        return "unknown"
+    if hasattr(value, "name"):
+        return str(getattr(value, "name"))
+    if hasattr(value, "value"):
+        return str(getattr(value, "value"))
+    return str(value)
+
+
+def _extract_render_view_type_names(info_data: Any) -> set[str]:
+    """Collect view type names from MySkoda info composite renders."""
+    view_type_names: set[str] = set()
+    for render in getattr(info_data, "composite_renders", []) or []:
+        view_type = getattr(render, "view_type", None)
+        view_type_names.add(_display_value(view_type).upper())
+    return view_type_names
+
+
+def _derive_charging_hints_from_info(
+    info_data: Any,
+) -> tuple[Optional[bool], Optional[bool]]:
+    """Infer plugged-in/charging booleans from render view types when available."""
+    view_type_names = _extract_render_view_type_names(info_data)
+    if any(name.startswith("CHARGING_") for name in view_type_names):
+        return True, True
+    if any(name.startswith("PLUGGED_IN_") for name in view_type_names):
+        return True, False
+    return None, None
+
+
+def _extract_charged_range(charging: Any) -> Any:
+    """Best-effort charged/range extraction across myskoda payload variants."""
+    for attr in (
+        "charged_range",
+        "range",
+        "remaining_cruising_range_in_km",
+        "remaining_cruising_range_in_m",
+    ):
+        value = getattr(charging, attr, None)
+        if value is not None:
+            return value
+    return None
+
+
+def _extract_value_from_candidates(source: Any, candidates: tuple[str, ...]) -> Any:
+    """Read first non-null attribute from an object using candidate names."""
+    if source is None:
+        return None
+    for attr in candidates:
+        value = getattr(source, attr, None)
+        if value is not None:
+            return value
+    return None
+
+
+def _normalize_measurement_value(value: Any) -> Optional[Any]:
+    """Normalize empty/unknown measurement values to None."""
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip().lower() in {
+        "",
+        "none",
+        "null",
+        "unknown",
+    }:
+        return None
+    return value
+
+
+def _normalize_range_km(value: Any) -> Optional[Any]:
+    """Normalize range values to km when payload provides meter-based values."""
+    normalized = _normalize_measurement_value(value)
+    if normalized is None:
+        return None
+    if isinstance(normalized, (int, float)) and normalized > 2000:
+        # EV range values above 2000 are expected to be meters in myskoda payloads.
+        return int(round(float(normalized) / 1000.0))
+    return normalized
+
+
+def _normalize_key_name(name: str) -> str:
+    """Normalize field names for candidate matching across payload variants."""
+    return "".join(ch for ch in name.lower() if ch.isalnum())
+
+
+def _find_value_in_nested_payload(
+    payload: Any,
+    candidates: tuple[str, ...],
+    *,
+    max_depth: int = 6,
+) -> Any:
+    """Find first non-null candidate value in nested dict/object/list payloads."""
+    normalized_candidates = {_normalize_key_name(candidate) for candidate in candidates}
+    visited: set[int] = set()
+
+    def _walk(node: Any, depth: int) -> Any:
+        if depth < 0 or node is None:
+            return None
+
+        node_id = id(node)
+        if node_id in visited:
+            return None
+        visited.add(node_id)
+
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if _normalize_key_name(str(key)) in normalized_candidates:
+                    normalized = _normalize_measurement_value(value)
+                    if normalized is not None:
+                        return normalized
+            for value in node.values():
+                found = _walk(value, depth - 1)
+                if found is not None:
+                    return found
+            return None
+
+        if isinstance(node, (list, tuple, set)):
+            for item in node:
+                found = _walk(item, depth - 1)
+                if found is not None:
+                    return found
+            return None
+
+        if hasattr(node, "model_dump"):
+            try:
+                dumped = node.model_dump()
+                found = _walk(dumped, depth - 1)
+                if found is not None:
+                    return found
+            except Exception:  # noqa: BLE001
+                pass
+
+        if hasattr(node, "dict"):
+            try:
+                dumped = node.dict()
+                found = _walk(dumped, depth - 1)
+                if found is not None:
+                    return found
+            except Exception:  # noqa: BLE001
+                pass
+
+        node_dict = getattr(node, "__dict__", None)
+        if isinstance(node_dict, dict):
+            found = _walk(node_dict, depth - 1)
+            if found is not None:
+                return found
+
+        return None
+
+    return _walk(payload, max_depth)
+
+
+def _extract_number_from_text(payload: Any, patterns: tuple[str, ...]) -> Optional[Any]:
+    """Parse numeric measurements from payload string representation."""
+    text = str(payload)
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if not match:
+            continue
+        raw = match.group(1)
+        try:
+            if "." in raw:
+                return float(raw)
+            return int(raw)
+        except ValueError:
+            continue
+    return None
+
+
+def _collect_candidate_paths(
+    payload: Any,
+    *,
+    max_depth: int = 6,
+) -> list[str]:
+    """Collect nested key paths that look related to charge measurements."""
+    keywords = (
+        "soc",
+        "charge",
+        "range",
+        "battery",
+        "cruising",
+        "level",
+        "percent",
+    )
+    visited: set[int] = set()
+    paths: set[str] = set()
+
+    def _walk(node: Any, prefix: str, depth: int) -> None:
+        if depth < 0 or node is None:
+            return
+        node_id = id(node)
+        if node_id in visited:
+            return
+        visited.add(node_id)
+
+        if isinstance(node, dict):
+            for key, value in node.items():
+                key_str = str(key)
+                path = f"{prefix}.{key_str}" if prefix else key_str
+                low = key_str.lower()
+                if any(k in low for k in keywords):
+                    paths.add(path)
+                _walk(value, path, depth - 1)
+            return
+
+        if isinstance(node, (list, tuple, set)):
+            for idx, item in enumerate(node):
+                path = f"{prefix}[{idx}]" if prefix else f"[{idx}]"
+                _walk(item, path, depth - 1)
+            return
+
+        if hasattr(node, "model_dump"):
+            try:
+                _walk(node.model_dump(), prefix, depth - 1)
+                return
+            except Exception:  # noqa: BLE001
+                pass
+
+        if hasattr(node, "dict"):
+            try:
+                _walk(node.dict(), prefix, depth - 1)
+                return
+            except Exception:  # noqa: BLE001
+                pass
+
+        node_dict = getattr(node, "__dict__", None)
+        if isinstance(node_dict, dict):
+            _walk(node_dict, prefix, depth - 1)
+
+    _walk(payload, "", max_depth)
+    return sorted(paths)
+
+
+def _collect_candidate_values(
+    payload: Any,
+    *,
+    max_depth: int = 6,
+    max_items: int = 60,
+) -> dict[str, Any]:
+    """Collect key paths and raw values for charge-related measurement fields."""
+    keywords = (
+        "soc",
+        "charge",
+        "range",
+        "battery",
+        "cruising",
+        "level",
+        "percent",
+    )
+    visited: set[int] = set()
+    values: dict[str, Any] = {}
+
+    def _walk(node: Any, prefix: str, depth: int) -> None:
+        if depth < 0 or node is None or len(values) >= max_items:
+            return
+
+        node_id = id(node)
+        if node_id in visited:
+            return
+        visited.add(node_id)
+
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if len(values) >= max_items:
+                    return
+                key_str = str(key)
+                path = f"{prefix}.{key_str}" if prefix else key_str
+                low = key_str.lower()
+                if any(k in low for k in keywords):
+                    values[path] = value
+                _walk(value, path, depth - 1)
+            return
+
+        if isinstance(node, (list, tuple, set)):
+            for idx, item in enumerate(node):
+                if len(values) >= max_items:
+                    return
+                path = f"{prefix}[{idx}]" if prefix else f"[{idx}]"
+                _walk(item, path, depth - 1)
+            return
+
+        if hasattr(node, "model_dump"):
+            try:
+                _walk(node.model_dump(), prefix, depth - 1)
+                return
+            except Exception:  # noqa: BLE001
+                pass
+
+        if hasattr(node, "dict"):
+            try:
+                _walk(node.dict(), prefix, depth - 1)
+                return
+            except Exception:  # noqa: BLE001
+                pass
+
+        node_dict = getattr(node, "__dict__", None)
+        if isinstance(node_dict, dict):
+            _walk(node_dict, prefix, depth - 1)
+
+    _walk(payload, "", max_depth)
+    return values
+
+
+async def _maybe_log_measurement_diagnostics(
+    soc_value: Any,
+    charged_range_value: Any,
+    charging: Any,
+    info_data: Any,
+    health: Any,
+    status: Any,
+) -> None:
+    """Log available key paths to help map real SOC/range fields."""
+    global _last_measurement_diag_log_time
+
+    enable_diag = _read_bool_env("SKODA_LOG_MEASUREMENT_DIAGNOSTICS", True)
+    if not enable_diag:
+        return
+
+    if soc_value is not None and charged_range_value is not None:
+        return
+
+    now = time.time()
+    if now - _last_measurement_diag_log_time < MEASUREMENT_DIAGNOSTIC_INTERVAL_SECONDS:
+        return
+
+    payload_paths = {
+        "charging": _collect_candidate_paths(charging),
+        "info": _collect_candidate_paths(info_data),
+        "health": _collect_candidate_paths(health),
+        "status": _collect_candidate_paths(status),
+    }
+    payload_values = {
+        "charging": _collect_candidate_values(charging),
+        "info": _collect_candidate_values(info_data),
+        "health": _collect_candidate_values(health),
+        "status": _collect_candidate_values(status),
+    }
+    # Keep one compact line to avoid excessive log volume.
+    diag_message = (
+        "Measurement diagnostics: "
+        f"soc={soc_value}, charged_range={charged_range_value}, "
+        f"paths={json.dumps(payload_paths, default=str)}, "
+        f"values={json.dumps(payload_values, default=str)}"
+    )
+    my_logger.warning(diag_message)
+    await save_log_to_db(diag_message)
+    _last_measurement_diag_log_time = now
+
+
+def _resolve_soc_and_range(
+    charging: Any,
+    info_data: Any,
+    health: Any,
+    status: Any,
+) -> tuple[Any, Any]:
+    """Resolve SOC and range using charging payload, info hints, and cache."""
+    global _last_known_soc, _last_known_charged_range
+
+    info_battery = getattr(info_data, "battery", None)
+    soc_candidates = (
+        "soc",
+        "state_of_charge",
+        "state_of_charge_in_percent",
+        "battery_level",
+        "battery_percentage",
+    )
+    range_candidates = (
+        "charged_range",
+        "range",
+        "remaining_range_km",
+        "remaining_cruising_range_in_km",
+        "remaining_cruising_range_in_meters",
+        "remaining_cruising_range_in_m",
+    )
+
+    soc_value = _normalize_measurement_value(getattr(charging, "soc", None))
+    if soc_value is None:
+        soc_value = _normalize_measurement_value(
+            _extract_value_from_candidates(info_data, soc_candidates)
+        )
+    if soc_value is None:
+        soc_value = _normalize_measurement_value(
+            _extract_value_from_candidates(info_battery, soc_candidates)
+        )
+    if soc_value is None:
+        soc_value = _normalize_measurement_value(
+            _extract_value_from_candidates(health, soc_candidates)
+        )
+    if soc_value is None:
+        soc_value = _normalize_measurement_value(
+            _extract_value_from_candidates(status, soc_candidates)
+        )
+    if soc_value is None:
+        soc_value = _normalize_measurement_value(
+            _find_value_in_nested_payload(charging, soc_candidates)
+        )
+    if soc_value is None:
+        soc_value = _normalize_measurement_value(
+            _find_value_in_nested_payload(info_data, soc_candidates)
+        )
+    if soc_value is None:
+        soc_value = _normalize_measurement_value(
+            _find_value_in_nested_payload(health, soc_candidates)
+        )
+    if soc_value is None:
+        soc_value = _normalize_measurement_value(
+            _find_value_in_nested_payload(status, soc_candidates)
+        )
+    if soc_value is None:
+        soc_value = _normalize_measurement_value(
+            _extract_number_from_text(
+                charging,
+                (
+                    r"soc\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
+                    r"state[_\s]?of[_\s]?charge\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
+                    r"state[_\s]?of[_\s]?charge[_\s]?in[_\s]?percent\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
+                ),
+            )
+        )
+    if soc_value is None:
+        soc_value = _normalize_measurement_value(
+            _extract_number_from_text(
+                info_data,
+                (
+                    r"soc\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
+                    r"state[_\s]?of[_\s]?charge\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
+                    r"state[_\s]?of[_\s]?charge[_\s]?in[_\s]?percent\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
+                ),
+            )
+        )
+
+    charged_range_value = _normalize_range_km(_extract_charged_range(charging))
+    if charged_range_value is None:
+        charged_range_value = _normalize_range_km(
+            _extract_value_from_candidates(info_data, range_candidates)
+        )
+    if charged_range_value is None:
+        charged_range_value = _normalize_range_km(
+            _extract_value_from_candidates(health, range_candidates)
+        )
+    if charged_range_value is None:
+        charged_range_value = _normalize_range_km(
+            _find_value_in_nested_payload(charging, range_candidates)
+        )
+    if charged_range_value is None:
+        charged_range_value = _normalize_range_km(
+            _find_value_in_nested_payload(info_data, range_candidates)
+        )
+    if charged_range_value is None:
+        charged_range_value = _normalize_range_km(
+            _find_value_in_nested_payload(health, range_candidates)
+        )
+    if charged_range_value is None:
+        charged_range_value = _normalize_range_km(
+            _extract_number_from_text(
+                charging,
+                (
+                    r"charged[_\s]?range\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
+                    r"remaining[_\s]?cruising[_\s]?range[_\s]?in[_\s]?km\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
+                    r"remaining[_\s]?cruising[_\s]?range[_\s]?in[_\s]?meters\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
+                ),
+            )
+        )
+    if charged_range_value is None:
+        charged_range_value = _normalize_range_km(
+            _extract_number_from_text(
+                info_data,
+                (
+                    r"charged[_\s]?range\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
+                    r"remaining[_\s]?cruising[_\s]?range[_\s]?in[_\s]?km\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
+                    r"remaining[_\s]?cruising[_\s]?range[_\s]?in[_\s]?meters\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
+                ),
+            )
+        )
+
+    if soc_value is not None:
+        _last_known_soc = soc_value
+    elif _last_known_soc is not None:
+        soc_value = _last_known_soc
+
+    if charged_range_value is not None:
+        _last_known_charged_range = charged_range_value
+    elif _last_known_charged_range is not None:
+        charged_range_value = _last_known_charged_range
+
+    return soc_value, charged_range_value
+
+
+def _build_chargefinder_event_message(
+    charging_status: str,
+    plug_status: str,
+    soc: Any,
+    charged_range: Any,
+) -> Optional[str]:
+    """Build a rawlog line matching chargefinder's charging event patterns."""
+    status_upper = charging_status.upper()
+    plug_upper = plug_status.upper()
+
+    if "CHARGING" in status_upper:
+        operation_token = "ChargingState.CHARGING"
+    elif "PLUGGED" in plug_upper or "CONNECTED" in plug_upper:
+        operation_token = "ChargingState.READY_FOR_CHARGING"
+    elif "UNPLUGGED" in plug_upper or "DISCONNECTED" in plug_upper:
+        operation_token = "OperationName.STOP_CHARGING"
+    else:
+        return None
+
+    return (
+        "Charging event poll: "
+        f"{operation_token}, "
+        f"soc={soc}, "
+        f"charged_range={charged_range}"
+    )
+
+
+POLLING_FALLBACK_INTERVAL_SECONDS = _read_int_env(
+    "SKODA_POLLING_FALLBACK_INTERVAL_SECONDS",
+    POLLING_FALLBACK_INTERVAL_SECONDS,
+)
+MQTT_RECOVERY_ATTEMPT_INTERVAL_SECONDS = _read_int_env(
+    "SKODA_MQTT_RECOVERY_ATTEMPT_INTERVAL_SECONDS",
+    MQTT_RECOVERY_ATTEMPT_INTERVAL_SECONDS,
+)
+FORCE_POLLING_FALLBACK = _read_bool_env("SKODA_FORCE_POLLING_FALLBACK", False)
+MEASUREMENT_DIAGNOSTIC_INTERVAL_SECONDS = _read_int_env(
+    "SKODA_MEASUREMENT_DIAGNOSTIC_INTERVAL_SECONDS",
+    MEASUREMENT_DIAGNOSTIC_INTERVAL_SECONDS,
+)
 
 
 class _MyskodaMqttLogHandler(logging.Handler):
@@ -82,6 +657,7 @@ class _MyskodaMqttLogHandler(logging.Handler):
 
 
 def _configure_myskoda_mqtt_logging() -> None:
+    """Attach one handler to capture myskoda MQTT auth/disconnect signals."""
     logger = logging.getLogger("myskoda.mqtt")
     logger.setLevel(logging.INFO)
     if any(isinstance(h, _MyskodaMqttLogHandler) for h in logger.handlers):
@@ -218,9 +794,8 @@ def check_mqtt_connection_state() -> bool:
         if is_connected and _last_mqtt_error_msg:
             recent_err = time.time() - _last_mqtt_error_time
             low = _last_mqtt_error_msg.lower()
-            if (
-                recent_err < MQTT_ERROR_STALE_SECONDS
-                and ("not authorized" in low or "connection lost" in low)
+            if recent_err < MQTT_ERROR_STALE_SECONDS and (
+                "not authorized" in low or "connection lost" in low
             ):
                 my_logger.warning(
                     "MQTT listener is running but recent broker error indicates disconnected state: %s",
@@ -486,9 +1061,10 @@ async def get_skoda_update(vin: str) -> None:
         my_logger.debug("Fetching vehicle health...")
         await save_log_to_db("Fetching vehicle health...")
         health = await myskoda.get_health(vin)
+        mileage = getattr(health, "mileage_in_km", None)
         my_logger.debug("Vehicle health fetched.")
-        await save_log_to_db(f"Vehicle health fetched, mileage: {health.mileage_in_km}")
-        my_logger.debug("Mileage: %s", health.mileage_in_km)
+        await save_log_to_db(f"Vehicle health fetched, mileage: {mileage}")
+        my_logger.debug("Mileage: %s", mileage)
         info_data = await myskoda.get_info(vin)
         await save_log_to_db(f"Vehicle info fetched: {info_data}")
         my_logger.debug("Vehicle info fetched.")
@@ -538,6 +1114,75 @@ async def get_skoda_update(vin: str) -> None:
             # Do not mark unhealthy for positions-only issues; continue gracefully
             my_logger.warning("Fetching vehicle positions failed: %s", e)
             await save_log_to_db(f"Fetching vehicle positions failed: {e}")
+
+        # Capture a concise snapshot with the two key values requested by users:
+        # mileage and current charging details.
+        if hasattr(myskoda, "get_charging"):
+            try:
+                charging = await myskoda.get_charging(vin)
+                inferred_plugged, inferred_charging = _derive_charging_hints_from_info(
+                    info_data
+                )
+
+                charging_status = _display_value(
+                    getattr(charging, "charging_status", None)
+                )
+                plug_status = _display_value(getattr(charging, "plug_status", None))
+
+                if charging_status == "unknown" and inferred_charging is not None:
+                    charging_status = (
+                        "INFERRED_CHARGING"
+                        if inferred_charging
+                        else "INFERRED_NOT_CHARGING"
+                    )
+                if plug_status == "unknown" and inferred_plugged is not None:
+                    plug_status = (
+                        "INFERRED_PLUGGED_IN"
+                        if inferred_plugged
+                        else "INFERRED_UNPLUGGED"
+                    )
+
+                soc_value, charged_range_value = _resolve_soc_and_range(
+                    charging,
+                    info_data,
+                    health,
+                    status,
+                )
+                await _maybe_log_measurement_diagnostics(
+                    soc_value,
+                    charged_range_value,
+                    charging,
+                    info_data,
+                    health,
+                    status,
+                )
+
+                snapshot_message = (
+                    "Vehicle snapshot fetched: "
+                    f"mileage_km={mileage}, "
+                    f"soc={soc_value}, "
+                    f"charging_status={charging_status}, "
+                    f"plug_status={plug_status}, "
+                    "charging_state="
+                    f"{_display_value(getattr(charging, 'state', None))}, "
+                    "render_hints="
+                    f"{','.join(sorted(_extract_render_view_type_names(info_data))) or 'none'}"
+                )
+                my_logger.info(snapshot_message)
+                await save_log_to_db(snapshot_message)
+
+                chargefinder_event_message = _build_chargefinder_event_message(
+                    charging_status,
+                    plug_status,
+                    soc_value,
+                    charged_range_value,
+                )
+                if chargefinder_event_message is not None:
+                    my_logger.info(chargefinder_event_message)
+                    await save_log_to_db(chargefinder_event_message)
+            except Exception as e:  # noqa: BLE001
+                my_logger.warning("Fetching charging snapshot failed: %s", e)
+                await save_log_to_db(f"Fetching charging snapshot failed: {e}")
     except Exception as e:  # noqa: BLE001
         _mark_unhealthy(f"get_skoda_update failed: {e}", e)
         raise
@@ -591,7 +1236,9 @@ async def _resolve_vins_for_subscriptions() -> list[str]:
     msg = "No vehicle VINs found in garage; falling back to configured SKODA_VEHICLE"
     my_logger.warning(msg)
     _degraded_reason = msg
-    await save_log_to_db("No garage VINs found; falling back to configured SKODA_VEHICLE")
+    await save_log_to_db(
+        "No garage VINs found; falling back to configured SKODA_VEHICLE"
+    )
 
     # MySkoda.connect() subscribes MQTT topics based on garage VINs.
     # If that list is empty we must rebind MQTT with the fallback VIN.
@@ -710,12 +1357,24 @@ async def skodarunner() -> None:
                     await get_skoda_update(VIN)
                 last_event_received = time.time()
                 if vins:
-                    my_logger.debug("Vehicle VIN available for account (index 0 selected)")
+                    my_logger.debug(
+                        "Vehicle VIN available for account (index 0 selected)"
+                    )
                     my_logger.debug("Processing vehicle VIN for update")
+                else:
                     my_logger.warning("No vehicle VINs found for account")
 
                 mqtt_ready = False
-                if myskoda.mqtt is not None:
+                if FORCE_POLLING_FALLBACK:
+                    my_logger.warning(
+                        "SKODA_FORCE_POLLING_FALLBACK enabled; enforcing polling-only mode"
+                    )
+                    await save_log_to_db(
+                        "SKODA_FORCE_POLLING_FALLBACK enabled; enforcing polling-only mode"
+                    )
+                    if myskoda.mqtt is not None:
+                        myskoda.mqtt = None
+                elif myskoda.mqtt is not None:
                     try:
                         await asyncio.wait_for(
                             myskoda.mqtt.connect(user.id, vins),
@@ -790,7 +1449,8 @@ async def skodarunner() -> None:
                                     )
 
                             if (
-                                myskoda.mqtt is not None
+                                not FORCE_POLLING_FALLBACK
+                                and myskoda.mqtt is not None
                                 and now_ts - last_mqtt_recovery_attempt_ts
                                 >= MQTT_RECOVERY_ATTEMPT_INTERVAL_SECONDS
                             ):
@@ -868,10 +1528,7 @@ def _build_health_response(conn, cur, connection_results):
     )
 
     if _degraded_reason:
-        last_lines_joined += (
-            "\nStatus: DEGRADED\n"
-            f"Reason: {_degraded_reason}\n"
-        )
+        last_lines_joined += "\nStatus: DEGRADED\n" f"Reason: {_degraded_reason}\n"
 
     if _polling_fallback_active:
         last_lines_joined += (
