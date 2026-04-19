@@ -1,9 +1,9 @@
 /*M!999999\- enable the sandbox mode */ 
--- MariaDB dump 10.19-11.7.2-MariaDB, for osx10.20 (arm64)
+-- MariaDB dump 10.19-12.2.2-MariaDB, for osx10.21 (arm64)
 --
 -- Host: 192.168.50.2    Database: skoda
 -- ------------------------------------------------------
--- Server version	11.8.2-MariaDB-ubu2404
+-- Server version	11.8.6-MariaDB-ubu2404
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
@@ -76,6 +76,7 @@ CREATE TABLE `charge_hours` (
   `mileage` int(10) DEFAULT NULL,
   `start_at` datetime DEFAULT NULL,
   `stop_at` datetime DEFAULT NULL,
+  `start_range` int(10) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `time` (`log_timestamp`),
   KEY `frontend` (`stop_at`,`mileage`)
@@ -124,4 +125,4 @@ CREATE TABLE `rawlogs` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*M!100616 SET NOTE_VERBOSITY=@OLD_NOTE_VERBOSITY */;
 
--- Dump completed on 2025-07-10 11:55:05
+-- Dump completed on 2026-04-19 15:17:56

@@ -630,7 +630,7 @@ async def invoke_charge_collector():
             if success:
                 my_logger.debug("Charge processed successfully.")
                 processed_count += 1
-                sleeptime = 0.001
+                sleeptime = 0
             else:
                 my_logger.error("Failed to process charge event, will retry")
                 sleeptime = 1
@@ -661,7 +661,7 @@ async def invoke_charge_collector():
             )
             result = await process_all_amounts()
             my_logger.debug("Batch processing result: %s", result)
-            sleeptime = 0.001  # Quick cycle after batch processing
+            sleeptime = 0  # Quick cycle after batch processing
     else:
         my_logger.debug("No charge hours with empty amounts found.")
 
@@ -673,7 +673,7 @@ async def invoke_charge_collector():
         result = await find_range_from_start(no_start_range)
         if result:
             my_logger.debug("Charge hours updated with start_range successfully.")
-            sleeptime = 0.001
+            sleeptime = 0
 
             # Check if there are more records needing start_range and batch process them
             remaining_no_start_range = await find_records_with_no_start_range()
@@ -683,7 +683,7 @@ async def invoke_charge_collector():
                 )
                 result = await process_all_start_ranges()
                 my_logger.debug("Start range batch processing result: %s", result)
-                sleeptime = 0.001  # Quick cycle after batch processing
+                sleeptime = 0  # Quick cycle after batch processing
 
     # Check if we need to invoke the API call after processing data
     if sleeptime != SLEEPTIME:
