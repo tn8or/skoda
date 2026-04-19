@@ -450,6 +450,31 @@ def test_read_int_env_falls_back_for_invalid_value(monkeypatch):
     assert m._read_int_env("SKODA_POLLING_FALLBACK_INTERVAL_SECONDS", 300) == 300
 
 
+@pytest.mark.parametrize(
+    ("raw_value", "expected"),
+    [
+        ("true", True),
+        ("1", True),
+        ("yes", True),
+        ("on", True),
+        ("false", False),
+        ("0", False),
+        ("no", False),
+        ("off", False),
+    ],
+)
+def test_read_bool_env_parses_valid_values(monkeypatch, raw_value, expected):
+    m = import_with_stubs()
+    monkeypatch.setenv("SKODA_FORCE_POLLING_FALLBACK", raw_value)
+    assert m._read_bool_env("SKODA_FORCE_POLLING_FALLBACK", False) is expected
+
+
+def test_read_bool_env_falls_back_for_invalid_value(monkeypatch):
+    m = import_with_stubs()
+    monkeypatch.setenv("SKODA_FORCE_POLLING_FALLBACK", "invalid")
+    assert m._read_bool_env("SKODA_FORCE_POLLING_FALLBACK", True) is True
+
+
 @pytest.mark.asyncio
 async def test_check_api_health_failure():
     """Test API health check failure."""
@@ -871,3 +896,59 @@ async def test_root_returns_healthy_when_polling_fallback_active_and_mqtt_down()
     m._bg_task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await m._bg_task
+
+
+@pytest.mark.asyncio
+async def test_skodarunner_force_polling_fallback_skips_mqtt_connect_and_recovery():
+    m = import_with_stubs()
+
+    class AuthorizationFailedError(Exception):
+        pass
+
+    class MarketingConsentError(Exception):
+        pass
+
+    auth_pkg = types.ModuleType("myskoda.auth")
+    auth_auth_mod = types.ModuleType("myskoda.auth.authorization")
+    auth_auth_mod.AuthorizationFailedError = AuthorizationFailedError
+    auth_auth_mod.MarketingConsentError = MarketingConsentError
+    sys.modules["myskoda.auth"] = auth_pkg
+    sys.modules["myskoda.auth.authorization"] = auth_auth_mod
+
+    fake_mqtt = types.SimpleNamespace(
+        connect=AsyncMock(),
+        disconnect=AsyncMock(),
+    )
+
+    class FakeSkoda:
+        def __init__(self, _session):
+            self.authorization = types.SimpleNamespace(authorize=AsyncMock())
+            self.mqtt = fake_mqtt
+            self.subscribe_events = MagicMock()
+            self.disconnect = AsyncMock()
+
+        async def get_user(self):
+            return types.SimpleNamespace(id="user-1")
+
+    sys.modules["myskoda"].MySkoda = FakeSkoda
+
+    with patch(
+        "skodaimporter.chargeimporter._resolve_vins_for_subscriptions",
+        new=AsyncMock(return_value=["VIN123"]),
+    ):
+        with patch(
+            "skodaimporter.chargeimporter.get_skoda_update",
+            new=AsyncMock(side_effect=[None, asyncio.CancelledError()]),
+        ):
+            with patch(
+                "skodaimporter.chargeimporter.save_log_to_db",
+                new=AsyncMock(),
+            ):
+                with patch(
+                    "skodaimporter.chargeimporter.FORCE_POLLING_FALLBACK",
+                    True,
+                ):
+                    await m.skodarunner()
+
+    fake_mqtt.connect.assert_not_awaited()
+    m.myskoda.subscribe_events.assert_not_called()
