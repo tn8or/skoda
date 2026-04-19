@@ -7,7 +7,7 @@ source .venv/bin/activate
 echo "Virtual environment activated"
 folders="skodaimporter skodachargefinder skodachargecollector skodaupdatechargeprices skodachargefrontend"
 for folder in ${folders}; do
-    cd ${folder} && pytest --maxfail=1 && cd ..
+    cd ${folder} && pytest --maxfail=1 && pip install -r requirements.txt && cd ..
 done
 echo ${folders} | xargs -P 8 -t -n 1 -I {} sh -c 'pip-compile --upgrade --output-file={}/requirements.txt {}/requirements.in'
 echo compiled requirements
