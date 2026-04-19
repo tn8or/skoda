@@ -588,17 +588,10 @@ async def _resolve_vins_for_subscriptions() -> list[str]:
         )
         return []
 
-    masked_fallback_vin = _mask_vin(fallback_vin)
-    msg = (
-        "No vehicle VINs found in garage; falling back to SKODA_VEHICLE="
-        f"{masked_fallback_vin}"
-    )
+    msg = "No vehicle VINs found in garage; falling back to configured SKODA_VEHICLE"
     my_logger.warning(msg)
     _degraded_reason = msg
-    await save_log_to_db(
-        "No garage VINs found; falling back to SKODA_VEHICLE="
-        f"{masked_fallback_vin}"
-    )
+    await save_log_to_db("No garage VINs found; falling back to configured SKODA_VEHICLE")
 
     # MySkoda.connect() subscribes MQTT topics based on garage VINs.
     # If that list is empty we must rebind MQTT with the fallback VIN.
