@@ -1,177 +1,143 @@
 # Skoda Data Logger
 
-A small, experimental project that subscribes to the MySkoda service and forwards relevant vehicle information to a local Graylog instance. Primary target vehicle is a Skoda Enyaq 80 (EV), but the approach may work with other models supported by MySkoda.
+Python microservices for collecting, processing, and visualizing charging data from Skoda EVs via MySkoda.
 
-> Very much a vibe-code-thing: this was hacked together with a healthy dose of Copilot and curiosity. Expect rough edges.
+## Architecture
 
-## Features
+This repository contains five FastAPI services:
 
-- Event subscription to MySkoda for near‑real‑time status updates
-- Graylog integration for centralized logs (charging status, battery, odometer, position, etc.)
-- FastAPI endpoints for charge summaries and system health monitoring
-- **Vehicle Telemetry Detection**: Health checks distinguish between service logs and actual car communication
-- Database persistence for charging sessions with cost calculations
-- Web dashboard for charge history visualization
+- `skodaimporter`: pulls vehicle data/events from MySkoda and writes raw logs
+- `skodachargefinder`: detects charging sessions from raw logs
+- `skodachargecollector`: aggregates charge events/hours
+- `skodaupdatechargeprices`: enriches charge hours with pricing
+- `skodachargefrontend`: web dashboard and health endpoints
+
+Shared utilities live in `commons.py` and per-service `commons.py` / `mariadb.py`.
+Database schema is in `sqldump/sqldump.sql`.
 
 ## Requirements
 
 - Python 3.13
-- Local or reachable Graylog server
-- MySkoda account credentials
-- Docker
+- Docker + Docker Compose
+- MariaDB (via compose or external)
+- MySkoda credentials (`SKODA_USER`, `SKODA_PASS`)
 
 ## Quick Start
 
-### 1) Clone the repo
-```bash
-git clone https://github.com/tn8or/skoda.git
-cd skoda
-```
+1. Create a virtual environment
 
-### 2) Create and activate a virtual environment
 ```bash
-python -m venv .venv
-# macOS/Linux:
+python3.13 -m venv .venv
 source .venv/bin/activate
-# Windows (PowerShell):
-.venv\Scripts\Activate.ps1
 ```
 
-### 3) Install dependencies
-```bash
-pip install -r requirements.txt
-```
-
-### 4) Configure environment
-Create a `.env` file in the project root (or export these variables however you prefer):
+1. Install development tooling
 
 ```bash
-# Required
-SKODA_USER=<your-myskoda-username>
-SKODA_PASS=<your-myskoda-password>
-GRAYLOG_HOST=<your-graylog-host>
-GRAYLOG_PORT=<your-graylog-port>
+pip install pytest pytest-asyncio pytest-cov pytest-mock pip-tools
 ```
 
-Make sure your Graylog server is running and reachable from where this app runs.
+1. Install dependencies per service (no root `requirements.txt`)
 
-### 5) Run the app
-
-- If the app uses Uvicorn (FastAPI), try:
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8000
+pip install -r skodaimporter/requirements.txt
+pip install -r skodachargefinder/requirements.txt
+pip install -r skodachargecollector/requirements.txt
+pip install -r skodaupdatechargeprices/requirements.txt
+pip install -r skodachargefrontend/requirements.txt
 ```
 
-- Or simply:
+1. Provide secrets in `secrets/`
+
+Required files:
+
+- `SKODA_USER`
+- `SKODA_PASS`
+- `MARIADB_DATABASE`
+- `MARIADB_USERNAME`
+- `MARIADB_PASSWORD`
+- `MARIADB_HOSTNAME`
+- `GRAYLOG_HOST`
+- `GRAYLOG_PORT`
+- `env`
+
+## Run
+
+Full local build + test + startup:
+
 ```bash
-python main.py
+./compose.sh up -d
 ```
 
-Then open:
-```
-GET http://localhost:8000/
-```
-This returns the last 30 lines of `app.log`.
+Start only database:
 
-## Docker
-
-Build:
 ```bash
-docker build -t skoda-data-logger .
+docker compose up -d mariadb
 ```
 
-Run:
+View logs:
+
 ```bash
-docker run -d \
-  -p 8000:8000 \
-  -e SKODA_USER=<your-myskoda-username> \
-  -e SKODA_PASS=<your-myskoda-password> \
-  -e GRAYLOG_HOST=<your-graylog-host> \
-  -e GRAYLOG_PORT=<your-graylog-port> \
-  skoda-data-logger
+docker compose logs -f skodaimporter
 ```
 
-Tip: If you want to persist the local log file, add a volume:
+Application logs are stdout/stderr based. Use `docker logs` / `kubectl logs`.
+
+## Test
+
+Run all tests:
+
 ```bash
--v $(pwd)/app.log:/app/app.log
+source .venv/bin/activate
+pytest -q
 ```
 
-## Project Structure
+Run one service tests:
 
+```bash
+cd skodachargefrontend && pytest -v
 ```
+
+## Service Endpoints
+
+Default local ports:
+
+- `skodaimporter`: 80
+- `skodachargefinder`: 2080
+- `skodachargecollector`: 3080
+- `skodaupdatechargeprices`: 3081
+- `skodachargefrontend`: 3082
+
+## Repository Layout
+
+```text
 .
-├── main.py                 # Main application / FastAPI entrypoint
-├── requirements.txt        # Python dependencies
-├── .github/
-│   └── workflows/
-│       ├── ci-cd.yml       # Combined CI/CD pipeline (testing, security, image building)
-│       └── update-deps.yml # Automated dependency updates
-├── README.md               # This file
-└── app.log                 # Runtime log file (created at runtime)
+├── commons.py
+├── mariadb.py
+├── compose.sh
+├── docker-compose.yml
+├── sqldump/
+├── secrets/
+├── skodaimporter/
+├── skodachargefinder/
+├── skodachargecollector/
+├── skodaupdatechargeprices/
+└── skodachargefrontend/
 ```
-
-## Logging
-
-- Graylog: Logs are sent via graypy to your Graylog server (configure host/port with env vars).
-- File: Local logs are written to `app.log` to simplify debugging.
-
-## API
-
-### skodachargefrontend Service
-
-- **GET `/`** — Returns charge summary dashboard for specified year/month
-- **GET `/health/rawlogs/age`** — Returns health status of the data pipeline:
-  - Monitors both **general service logs** and **vehicle telemetry logs** separately
-  - Returns HTTP 503 if vehicle logs are missing or older than optional threshold
-  - Useful for alerting when the service is running but the car isn't communicating
-  - Query params:
-    - `threshold_seconds` (optional): Alert if vehicle telemetry age exceeds this value
-  - Response includes:
-    - `vehicle_age_seconds`: Age of latest vehicle telemetry (from patterns like `%ServiceEvent%`, `%ChargingState%`, etc.)
-    - `general_age_seconds`: Age of latest general service log
-    - `within_threshold`: Boolean indicating if vehicle logs are within threshold
-    - HTTP 503 response if vehicle logs are missing or threshold exceeded
-
-Future improvement ideas:
-- Optional query parameter like `?lines=100` to control the amount of log lines returned.
-- Dashboard metrics and historical charts.
 
 ## CI/CD
 
-The `ci-cd.yml` workflow provides a complete CI/CD pipeline that:
-- Runs tests for all services with Python 3.13
-- Performs security scanning with pip-audit
-- Builds and pushes Docker images to GitHub Container Registry (GHCR)
-- Separates test images (for PRs) from production images (main branch only)
-- Invokes deployment webhooks after successful builds
+GitHub Actions:
 
-## Roadmap
+- `.github/workflows/ci-cd.yml`: tests, security scan, Docker image build/push, deploy webhooks
+- `.github/workflows/update-deps.yml`: dependency update automation
 
-- ✅ Persist charging session data to a database to compute running costs
-- ✅ Vehicle telemetry detection in health checks
-- Enrich analytics (efficiency, costs, battery health trends)
-- Advanced alerting based on telemetry age and pattern detection
-- Harden error handling and reconnection logic
+## Security Notes
 
-## Contributing
-
-PRs and issues are welcome—especially improvements, bug fixes, and docs. This is a scrappy project; small quality-of-life fixes are appreciated.
+- Never commit secrets
+- Keep credentials in `secrets/` (git-ignored)
+- Escape UI-rendered values in frontend (`escape_html()`)
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
-
-## GitHub Actions
-
-The repository includes the following GitHub Actions workflows:
-- **CI/CD Pipeline** (`ci-cd.yml`): Combined workflow that handles:
-  - Testing all services with Python 3.13 in `python:3.13-slim` containers
-  - Security scanning with pip-audit
-  - Building test images with `docker:27-dind` for PRs and non-main branches
-  - Building production images with `docker:27-dind` for main branch
-  - Deployment webhooks for production releases
-- **Update Dependencies Workflow** (`update-deps.yml`): Uses `python:3.13-slim` for automated dependency updates with pip-compile
-
-## Author
-
-Mostly GitHub Copilot, with a bit by Tommy Eriksen.
+MIT (see `LICENSE`)

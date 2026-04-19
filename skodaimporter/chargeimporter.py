@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import json
+import logging
 import time
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Optional
@@ -14,7 +15,8 @@ from aiohttp import ClientSession
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import PlainTextResponse
 
-from commons import CHARGEFINDER_URL, db_connect, get_logger, load_secret, pull_api
+from commons import (CHARGEFINDER_URL, db_connect, get_logger, load_secret,
+                     pull_api)
 
 # Optional type-only imports to keep runtime import free when myskoda is missing
 if TYPE_CHECKING:  # pragma: no cover - import only for type checkers
@@ -28,6 +30,15 @@ if TYPE_CHECKING:  # pragma: no cover - import only for type checkers
 VIN = ""
 # Global myskoda client; initialized in skodarunner() when myskoda is available...
 myskoda: Optional[Any] = None
+
+
+def _mask_vin(vin: str) -> str:
+    """Return a redacted VIN for safe logging."""
+    if not vin:
+        return "<empty>"
+    if len(vin) <= 6:
+        return "***"
+    return f"{vin[:3]}***{vin[-3:]}"
 my_logger = get_logger("skodaimporter")
 my_logger.warning("Starting the application...")
 last_event_timeout = 4 * 60 * 60
@@ -36,6 +47,13 @@ last_event_received = time.time()
 _bg_task: Optional[asyncio.Task] = None
 _last_bg_error_time: float = 0.0
 _last_bg_error_msg: Optional[str] = None
+_degraded_reason: Optional[str] = None
+_startup_ready: bool = False
+_startup_started_at: float = time.time()
+_startup_status: str = "starting"
+_last_mqtt_error_msg: Optional[str] = None
+_last_mqtt_error_time: float = 0.0
+_polling_fallback_active: bool = False
 
 # Enhanced connection detection configuration
 CONNECTION_STATUS_TIMEOUT = 15 * 60  # 15 minutes for connection status checks
@@ -43,6 +61,32 @@ API_HEALTH_CHECK_TIMEOUT = 30 * 60  # 30 minutes for API health checks
 MQTT_STATE_CHECK_INTERVAL = 5 * 60  # 5 minutes for MQTT state verification
 # Grace window to avoid container restarts on transient auth failures
 AUTH_GRACE_SECONDS = 15 * 60
+VIN_LOOKUP_TIMEOUT_SECONDS = 20
+STARTUP_READY_GRACE_SECONDS = 90
+MYSKODA_CONNECT_TIMEOUT_SECONDS = 60
+POLLING_FALLBACK_INTERVAL_SECONDS = 5 * 60
+MQTT_RECOVERY_ATTEMPT_INTERVAL_SECONDS = 10 * 60
+MQTT_ERROR_STALE_SECONDS = 120
+
+
+class _MyskodaMqttLogHandler(logging.Handler):
+    """Capture MQTT client failures emitted by myskoda for health diagnostics."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        global _last_mqtt_error_msg, _last_mqtt_error_time
+        msg = record.getMessage()
+        lower = msg.lower()
+        if "connection lost" in lower or "not authorized" in lower:
+            _last_mqtt_error_msg = msg
+            _last_mqtt_error_time = time.time()
+
+
+def _configure_myskoda_mqtt_logging() -> None:
+    logger = logging.getLogger("myskoda.mqtt")
+    logger.setLevel(logging.INFO)
+    if any(isinstance(h, _MyskodaMqttLogHandler) for h in logger.handlers):
+        return
+    logger.addHandler(_MyskodaMqttLogHandler())
 
 
 def _is_transient_auth_error(msg: Optional[str]) -> bool:
@@ -52,6 +96,7 @@ def _is_transient_auth_error(msg: Optional[str]) -> bool:
         "AuthorizationFailedError" in msg
         or "MarketingConsentError" in msg
         or "authorization failed" in msg.lower()
+        or "myskoda connect timed out" in msg.lower()
     )
 
 
@@ -167,6 +212,21 @@ def check_mqtt_connection_state() -> bool:
             and mqtt_client._listener_task is not None
             and not mqtt_client._listener_task.done()
         )
+
+        # A running listener task can still be in an auth/reconnect loop.
+        # Treat recent broker-level auth/disconnect errors as disconnected.
+        if is_connected and _last_mqtt_error_msg:
+            recent_err = time.time() - _last_mqtt_error_time
+            low = _last_mqtt_error_msg.lower()
+            if (
+                recent_err < MQTT_ERROR_STALE_SECONDS
+                and ("not authorized" in low or "connection lost" in low)
+            ):
+                my_logger.warning(
+                    "MQTT listener is running but recent broker error indicates disconnected state: %s",
+                    _last_mqtt_error_msg,
+                )
+                return False
 
         my_logger.debug(
             "MQTT connection state: running=%s, connected=%s",
@@ -483,6 +543,72 @@ async def get_skoda_update(vin: str) -> None:
         raise
 
 
+async def _resolve_vins_for_subscriptions() -> list[str]:
+    """Resolve VINs to use for MQTT subscriptions.
+
+    Prefer VINs returned by the account garage. If that list is empty,
+    optionally fall back to SKODA_VEHICLE and rebind MQTT subscriptions for it.
+    """
+    if myskoda is None:
+        return []
+
+    global _degraded_reason
+    try:
+        vins = await asyncio.wait_for(
+            myskoda.list_vehicle_vins(), timeout=VIN_LOOKUP_TIMEOUT_SECONDS
+        )
+    except asyncio.TimeoutError:
+        msg = (
+            "Timed out while listing VINs from MySkoda garage "
+            f"after {VIN_LOOKUP_TIMEOUT_SECONDS}s"
+        )
+        my_logger.warning(msg)
+        await save_log_to_db(msg)
+        _degraded_reason = msg
+        vins = []
+    except Exception as e:  # noqa: BLE001
+        msg = f"Failed to list VINs from MySkoda garage: {e}"
+        my_logger.warning(msg)
+        await save_log_to_db(msg)
+        _degraded_reason = msg
+        vins = []
+
+    if vins:
+        _degraded_reason = None
+        my_logger.info("Garage VIN lookup succeeded with %s VIN(s)", len(vins))
+        return vins
+
+    fallback_vin = (load_secret("SKODA_VEHICLE") or "").strip()
+    if not fallback_vin:
+        my_logger.warning(
+            "No vehicle VINs found in garage and SKODA_VEHICLE is not configured"
+        )
+        await save_log_to_db(
+            "No vehicle VINs found in garage and SKODA_VEHICLE is not configured"
+        )
+        return []
+
+    msg = "No vehicle VINs found in garage; falling back to configured SKODA_VEHICLE"
+    my_logger.warning(msg)
+    _degraded_reason = msg
+    await save_log_to_db("No garage VINs found; falling back to configured SKODA_VEHICLE")
+
+    # MySkoda.connect() subscribes MQTT topics based on garage VINs.
+    # If that list is empty we must rebind MQTT with the fallback VIN.
+    try:
+        user = await myskoda.get_user()
+        if myskoda.mqtt is not None:
+            await myskoda.mqtt.disconnect()
+            await myskoda.mqtt.connect(user.id, [fallback_vin])
+            my_logger.info("MQTT reconnected with fallback VIN subscription")
+            await save_log_to_db("MQTT reconnected with fallback VIN subscription")
+    except Exception as e:  # noqa: BLE001
+        my_logger.warning("Failed to rebind MQTT using fallback VIN: %s", e)
+        await save_log_to_db(f"Failed to rebind MQTT using fallback VIN: {e}")
+
+    return [fallback_vin]
+
+
 async def skodarunner() -> None:
     my_logger.debug("Starting main function...")
     # Reconnect loop with backoff on failures
@@ -499,6 +625,8 @@ async def skodarunner() -> None:
                 backoff = min(backoff * 2, 300)
                 continue
 
+            _configure_myskoda_mqtt_logging()
+
             # Marketing consent handling became stricter upstream; import if available
             try:
                 from myskoda.auth.authorization import MarketingConsentError
@@ -507,11 +635,33 @@ async def skodarunner() -> None:
             async with ClientSession() as session:
                 my_logger.debug("Creating MySkoda instance...")
                 global myskoda
+                global _startup_ready, _startup_started_at, _startup_status
+                global _polling_fallback_active, last_event_received
+                global VIN, _degraded_reason
+                _startup_ready = False
+                _polling_fallback_active = False
+                if _startup_status == "starting":
+                    _startup_started_at = time.time()
+                _startup_status = "connecting"
                 myskoda = _MySkoda(session)
                 try:
-                    await myskoda.connect(
-                        load_secret("SKODA_USER"), load_secret("SKODA_PASS")
+                    await asyncio.wait_for(
+                        myskoda.authorization.authorize(
+                            load_secret("SKODA_USER"), load_secret("SKODA_PASS")
+                        ),
+                        timeout=MYSKODA_CONNECT_TIMEOUT_SECONDS,
                     )
+                except asyncio.TimeoutError:
+                    msg = (
+                        "MySkoda authorization timed out after "
+                        f"{MYSKODA_CONNECT_TIMEOUT_SECONDS}s"
+                    )
+                    _mark_unhealthy(msg)
+                    _startup_status = msg
+                    await save_log_to_db(msg)
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, 300)
+                    continue
                 except AuthorizationFailedError as auth_err:
                     # Upstream auth sometimes returns responses without redirect Location header
                     detail = (
@@ -539,29 +689,129 @@ async def skodarunner() -> None:
                         backoff = min(backoff * 2, 300)
                         continue
                     raise
-                my_logger.debug("Connected to MySkoda")
-                global VIN
-                vins = await myskoda.list_vehicle_vins()
+
+                my_logger.debug("REST authorization succeeded")
+                _startup_status = "resolving_user"
+                user = await myskoda.get_user()
+                my_logger.debug("Resolved user id for MQTT: %s", user.id)
+                _startup_status = "resolving_vins"
+                vins = await _resolve_vins_for_subscriptions()
+                if not vins:
+                    msg = (
+                        "No vehicle VIN available for subscriptions "
+                        "(garage empty and no SKODA_VEHICLE fallback)"
+                    )
+                    _mark_unhealthy(msg)
+                    await save_log_to_db(msg)
+                    raise RuntimeError(msg)
                 for vin in vins:
-                    print(f"Vehicle VIN: {vin}")
+                    print(f"Vehicle VIN: {_mask_vin(vin)}")
                     VIN = vin
                     await get_skoda_update(VIN)
+                last_event_received = time.time()
                 if vins:
-                    my_logger.debug("Vehicle VIN: %s", vins[0])
-                else:
+                    my_logger.debug("Vehicle VIN available for account (index 0 selected)")
+                    my_logger.debug("Processing vehicle VIN for update")
                     my_logger.warning("No vehicle VINs found for account")
+
+                mqtt_ready = False
+                if myskoda.mqtt is not None:
+                    try:
+                        await asyncio.wait_for(
+                            myskoda.mqtt.connect(user.id, vins),
+                            timeout=MYSKODA_CONNECT_TIMEOUT_SECONDS,
+                        )
+                        mqtt_ready = True
+                        my_logger.debug("Connected to MySkoda MQTT")
+                    except Exception as mqtt_err:  # noqa: BLE001
+                        my_logger.warning(
+                            "MQTT connect failed, switching to polling fallback: %s",
+                            mqtt_err,
+                        )
+                        await save_log_to_db(
+                            f"MQTT connect failed; switching to polling fallback: {mqtt_err}"
+                        )
+                else:
+                    my_logger.warning(
+                        "MySkoda MQTT client not available; using polling fallback"
+                    )
+
                 my_logger.debug("Subscribing to events...")
-                try:
-                    myskoda.subscribe_events(on_event)
-                    my_logger.debug("Subscribed to events")
-                except Exception as e:  # noqa: BLE001
-                    _mark_unhealthy(f"subscribe_events failed: {e}", e)
-                    raise
+                if mqtt_ready:
+                    try:
+                        myskoda.subscribe_events(on_event)
+                        _startup_ready = True
+                        _startup_status = "ready"
+                        _polling_fallback_active = False
+                        _degraded_reason = None
+                        my_logger.debug("Subscribed to events")
+                    except Exception as e:  # noqa: BLE001
+                        _mark_unhealthy(f"subscribe_events failed: {e}", e)
+                        _startup_status = f"subscribe_failed: {e}"
+                        raise
+                else:
+                    mqtt_hint = ""
+                    if _last_mqtt_error_msg:
+                        mqtt_hint = f" Latest MQTT error: {_last_mqtt_error_msg}"
+                    fallback_msg = (
+                        "MQTT unavailable, enabling API polling fallback."
+                        f" Poll interval={POLLING_FALLBACK_INTERVAL_SECONDS}s."
+                        f"{mqtt_hint}"
+                    )
+                    my_logger.warning(fallback_msg)
+                    await save_log_to_db(fallback_msg)
+                    _degraded_reason = fallback_msg
+                    _polling_fallback_active = True
+                    _startup_ready = True
+                    _startup_status = "polling_fallback"
                 # Reset backoff after a successful setup
                 backoff = 5
                 # Keep task alive until cancelled
+                last_poll_ts = 0.0
+                last_mqtt_recovery_attempt_ts = 0.0
                 try:
                     while True:
+                        now_ts = time.time()
+                        if _polling_fallback_active and VIN:
+                            if (
+                                now_ts - last_poll_ts
+                                >= POLLING_FALLBACK_INTERVAL_SECONDS
+                            ):
+                                try:
+                                    await get_skoda_update(VIN)
+                                    last_event_received = now_ts
+                                    last_poll_ts = now_ts
+                                    my_logger.info(
+                                        "Polling fallback update completed for configured vehicle"
+                                    )
+                                except Exception as poll_err:  # noqa: BLE001
+                                    my_logger.warning(
+                                        "Polling fallback update failed: %s", poll_err
+                                    )
+
+                            if (
+                                myskoda.mqtt is not None
+                                and now_ts - last_mqtt_recovery_attempt_ts
+                                >= MQTT_RECOVERY_ATTEMPT_INTERVAL_SECONDS
+                            ):
+                                last_mqtt_recovery_attempt_ts = now_ts
+                                try:
+                                    await myskoda.mqtt.connect(user.id, vins)
+                                    myskoda.subscribe_events(on_event)
+                                    _polling_fallback_active = False
+                                    _degraded_reason = None
+                                    _startup_status = "ready"
+                                    my_logger.info(
+                                        "MQTT recovery succeeded, disabling polling fallback"
+                                    )
+                                    await save_log_to_db(
+                                        "MQTT recovery succeeded, polling fallback disabled"
+                                    )
+                                except Exception as recover_err:  # noqa: BLE001
+                                    my_logger.warning(
+                                        "MQTT recovery attempt failed: %s", recover_err
+                                    )
+
                         await asyncio.sleep(1)
                 except asyncio.CancelledError:
                     my_logger.info("Background task cancelled, shutting down...")
@@ -576,6 +826,8 @@ async def skodarunner() -> None:
             my_logger.info("Background runner cancelled, exiting...")
             break
         except Exception as e:  # noqa: BLE001
+            _startup_ready = False
+            _startup_status = f"error: {e}"
             _mark_unhealthy(f"background runner error: {e}", e)
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 300)
@@ -610,6 +862,23 @@ def _build_health_response(conn, cur, connection_results):
         if check != "timestamp":
             last_lines_joined += f"  {check}: {result}\n"
 
+    last_lines_joined += (
+        f"\nStartup readiness: {_startup_ready}\n"
+        f"Startup status: {_startup_status}\n"
+    )
+
+    if _degraded_reason:
+        last_lines_joined += (
+            "\nStatus: DEGRADED\n"
+            f"Reason: {_degraded_reason}\n"
+        )
+
+    if _polling_fallback_active:
+        last_lines_joined += (
+            "Polling fallback: enabled\n"
+            f"Polling interval seconds: {POLLING_FALLBACK_INTERVAL_SECONDS}\n"
+        )
+
     try:
         cur.execute("SELECT COUNT(*) FROM skoda.rawlogs")
         count = cur.fetchone()[0]
@@ -634,20 +903,30 @@ async def root():
     # Perform enhanced connection health check
     connection_results = await perform_enhanced_connection_check(VIN)
 
+    # Explicit startup readiness gate: avoid reporting healthy before subscriptions are ready.
+    startup_elapsed = time.time() - _startup_started_at
+    if not _startup_ready and startup_elapsed > STARTUP_READY_GRACE_SECONDS:
+        detail = (
+            "startup incomplete: event subscriptions not ready "
+            f"(status={_startup_status}, elapsed={int(startup_elapsed)}s)"
+        )
+        my_logger.error("Healthcheck failing: %s", detail)
+        raise HTTPException(status_code=503, detail=detail)
+
     # If background task failed recently or is not running, report unhealthy
     recent_error_age = time.time() - _last_bg_error_time
     if _bg_task is None or _bg_task.done():
         detail = _last_bg_error_msg or "background task not running"
         my_logger.error("Healthcheck failing: %s", detail)
         raise HTTPException(status_code=503, detail=detail)
-    # Treat auth failures as transient; avoid 503 to prevent autoheal restarts
+    # Treat transient startup/auth failures as transient; avoid 503 to prevent autoheal restarts
     if recent_error_age < 300:
         if (
             _is_transient_auth_error(_last_bg_error_msg)
             and recent_error_age < AUTH_GRACE_SECONDS
         ):
             my_logger.warning(
-                "Auth error within %ss; allowing grace period without restart",
+                "Transient upstream error within %ss; allowing grace period without restart",
                 int(AUTH_GRACE_SECONDS),
             )
             # Return healthy response but include degraded note
@@ -659,7 +938,7 @@ async def root():
             except Exception:
                 body = ""
             body += (
-                "\nStatus: AUTH-DEGRADED (transient). "
+                "\nStatus: TRANSIENT-DEGRADED. "
                 "Importer will retry with backoff; container kept healthy to avoid restart.\n"
             )
             return PlainTextResponse(body.encode("utf-8"))
@@ -711,6 +990,11 @@ async def root():
             my_logger.error(
                 "MQTT connection check failed, real-time events may be unavailable"
             )
+            if _polling_fallback_active:
+                my_logger.warning(
+                    "Polling fallback active; treating MQTT failure as degraded but healthy"
+                )
+                return _build_health_response(conn, cur, connection_results)
             # Attempt to reconnect before failing health
             if await attempt_mqtt_reconnect(VIN):
                 my_logger.info("MQTT reconnect succeeded; rechecking health")
