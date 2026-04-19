@@ -71,7 +71,7 @@ Then open:
 ```
 GET http://localhost:8000/
 ```
-This returns the last 30 lines of `app.log`.
+Service logs are emitted to stdout/stderr. Use container logs to inspect runtime output.
 
 ## Docker
 
@@ -91,10 +91,7 @@ docker run -d \
   skoda-data-logger
 ```
 
-Tip: If you want to persist the local log file, add a volume:
-```bash
--v $(pwd)/app.log:/app/app.log
-```
+Tip: View logs with `docker logs <container-name>`.
 
 ## Project Structure
 
@@ -107,13 +104,12 @@ Tip: If you want to persist the local log file, add a volume:
 │       ├── ci-cd.yml       # Combined CI/CD pipeline (testing, security, image building)
 │       └── update-deps.yml # Automated dependency updates
 ├── README.md               # This file
-└── app.log                 # Runtime log file (created at runtime)
 ```
 
 ## Logging
 
-- Graylog: Logs are sent via graypy to your Graylog server (configure host/port with env vars).
-- File: Local logs are written to `app.log` to simplify debugging.
+- Application logs: emitted to stdout/stderr (use `docker logs` or `kubectl logs`).
+- Graylog: configure `GRAYLOG_HOST` and `GRAYLOG_PORT` for remote logging integration.
 
 ## API
 
