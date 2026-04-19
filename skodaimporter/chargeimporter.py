@@ -81,9 +81,8 @@ def _read_int_env(name: str, default: int) -> int:
         return parsed
     except (TypeError, ValueError):
         my_logger.warning(
-            "Invalid %s value '%s', using default %s",
+            "Invalid %s value provided, using default %s",
             name,
-            raw,
             default,
         )
         return default
@@ -100,9 +99,8 @@ def _read_bool_env(name: str, default: bool = False) -> bool:
     if normalized in {"0", "false", "no", "off"}:
         return False
     my_logger.warning(
-        "Invalid %s value '%s', using default %s",
+        "Invalid %s value provided, using default %s",
         name,
-        raw,
         default,
     )
     return default
@@ -804,11 +802,13 @@ async def skodarunner() -> None:
                 mqtt_ready = False
                 if FORCE_POLLING_FALLBACK:
                     my_logger.warning(
-                        "SKODA_FORCE_POLLING_FALLBACK enabled; skipping MQTT connect"
+                        "SKODA_FORCE_POLLING_FALLBACK enabled; enforcing polling-only mode"
                     )
                     await save_log_to_db(
-                        "SKODA_FORCE_POLLING_FALLBACK enabled; skipping MQTT connect"
+                        "SKODA_FORCE_POLLING_FALLBACK enabled; enforcing polling-only mode"
                     )
+                    if myskoda.mqtt is not None:
+                        myskoda.mqtt = None
                 elif myskoda.mqtt is not None:
                     try:
                         await asyncio.wait_for(
