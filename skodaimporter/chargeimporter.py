@@ -716,7 +716,7 @@ async def skodarunner() -> None:
                     await get_skoda_update(VIN)
                 last_event_received = time.time()
                 if vins:
-                    my_logger.debug("Vehicle VIN: %s", _mask_vin(vins[0]))
+                    my_logger.debug("Vehicle VIN available for account (index 0 selected)")
                 else:
                     my_logger.warning("No vehicle VINs found for account")
 
