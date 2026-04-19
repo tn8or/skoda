@@ -20,9 +20,13 @@ async def read_last_n_lines(filename, n):
     loop = asyncio.get_event_loop()
 
     def _read():
-        with open(filename, "r") as file:
-            lines = file.readlines()
-            return lines[-n:]
+        try:
+            with open(filename, "r", encoding="utf-8") as file:
+                lines = file.readlines()
+                return lines[-n:]
+        except (FileNotFoundError, OSError):
+            # In containers we log to stdout; local file logs may not exist.
+            return []
 
     return await loop.run_in_executor(None, _read)
 
@@ -98,8 +102,10 @@ async def update_all_charges():
 @app.get("/")
 async def root():
     conn, cur = await db_connect(my_logger)
-    last_25_lines = await read_last_n_lines("app.log", 15)
-    last_25_lines_joined = "".join(last_25_lines)
+    last_25_lines_joined = (
+        "Container logs are emitted to stdout. "
+        "Use kubectl logs for recent entries."
+    )
     try:
         await asyncio.get_event_loop().run_in_executor(
             None, cur.execute, "SELECT COUNT(*) FROM skoda.charge_hours"
