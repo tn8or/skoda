@@ -31,13 +31,13 @@ python3.13 -m venv .venv
 source .venv/bin/activate
 ```
 
-2. Install development tooling
+1. Install development tooling
 
 ```bash
 pip install pytest pytest-asyncio pytest-cov pytest-mock pip-tools
 ```
 
-3. Install dependencies per service (no root `requirements.txt`)
+1. Install dependencies per service (no root `requirements.txt`)
 
 ```bash
 pip install -r skodaimporter/requirements.txt
@@ -47,7 +47,7 @@ pip install -r skodaupdatechargeprices/requirements.txt
 pip install -r skodachargefrontend/requirements.txt
 ```
 
-4. Provide secrets in `secrets/`
+1. Provide secrets in `secrets/`
 
 Required files:
 
