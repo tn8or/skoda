@@ -1467,6 +1467,23 @@ async def skodarunner() -> None:
                                     await save_log_to_db(
                                         "MQTT recovery succeeded, polling fallback disabled"
                                     )
+                                    # Poll once immediately after MQTT recovery so
+                                    # last_event_received is fresh and we don't wait
+                                    # up to 4h for the event_timeout_check to fail
+                                    # in case the broker reconnects but sends no events.
+                                    if VIN:
+                                        try:
+                                            await get_skoda_update(VIN)
+                                            last_event_received = time.time()
+                                            last_poll_ts = last_event_received
+                                            my_logger.info(
+                                                "Post-MQTT-recovery poll completed"
+                                            )
+                                        except Exception as post_poll_err:  # noqa: BLE001
+                                            my_logger.warning(
+                                                "Post-MQTT-recovery poll failed: %s",
+                                                post_poll_err,
+                                            )
                                 except Exception as recover_err:  # noqa: BLE001
                                     my_logger.warning(
                                         "MQTT recovery attempt failed: %s", recover_err
