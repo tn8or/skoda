@@ -711,7 +711,7 @@ async def skodarunner() -> None:
                 last_event_received = time.time()
                 if vins:
                     my_logger.debug("Vehicle VIN available for account (index 0 selected)")
-                else:
+                    my_logger.debug("Processing vehicle VIN for update")
                     my_logger.warning("No vehicle VINs found for account")
 
                 mqtt_ready = False
