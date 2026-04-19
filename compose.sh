@@ -19,4 +19,4 @@ docker compose build \
 	--build-arg GIT_TAG="${GIT_TAG}" \
 	--build-arg BUILD_DATE="${BUILD_DATE}"
 fi
-docker compose $1
+docker compose $1 $2
