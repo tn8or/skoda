@@ -16,7 +16,8 @@ from aiohttp import ClientSession
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import PlainTextResponse
 
-from commons import CHARGEFINDER_URL, db_connect, get_logger, load_secret, pull_api
+from commons import (CHARGEFINDER_URL, db_connect, get_logger, load_secret,
+                     pull_api)
 
 # Optional type-only imports to keep runtime import free when myskoda is missing
 if TYPE_CHECKING:  # pragma: no cover - import only for type checkers
