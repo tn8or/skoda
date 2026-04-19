@@ -71,6 +71,10 @@ class _CursorWrapper:
     def close(self) -> None:
         return self._inner.close()
 
+    def __getattr__(self, name: str) -> Any:
+        # Pass through cursor attributes like lastrowid/rowcount.
+        return getattr(self._inner, name)
+
     def __iter__(self):
         try:
             return iter(self._inner)
