@@ -81,9 +81,8 @@ def _read_int_env(name: str, default: int) -> int:
         return parsed
     except (TypeError, ValueError):
         my_logger.warning(
-            "Invalid %s value '%s', using default %s",
+            "Invalid %s value provided, using default %s",
             name,
-            raw,
             default,
         )
         return default
@@ -100,9 +99,8 @@ def _read_bool_env(name: str, default: bool = False) -> bool:
     if normalized in {"0", "false", "no", "off"}:
         return False
     my_logger.warning(
-        "Invalid %s value '%s', using default %s",
+        "Invalid %s value provided, using default %s",
         name,
-        raw,
         default,
     )
     return default
