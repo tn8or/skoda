@@ -108,6 +108,17 @@ def _read_bool_env(name: str, default: bool = False) -> bool:
     return default
 
 
+def _display_value(value: Any) -> str:
+    """Render enum-like values in a stable, concise string form."""
+    if value is None:
+        return "unknown"
+    if hasattr(value, "name"):
+        return str(getattr(value, "name"))
+    if hasattr(value, "value"):
+        return str(getattr(value, "value"))
+    return str(value)
+
+
 POLLING_FALLBACK_INTERVAL_SECONDS = _read_int_env(
     "SKODA_POLLING_FALLBACK_INTERVAL_SECONDS",
     POLLING_FALLBACK_INTERVAL_SECONDS,
@@ -536,9 +547,10 @@ async def get_skoda_update(vin: str) -> None:
         my_logger.debug("Fetching vehicle health...")
         await save_log_to_db("Fetching vehicle health...")
         health = await myskoda.get_health(vin)
+        mileage = getattr(health, "mileage_in_km", None)
         my_logger.debug("Vehicle health fetched.")
-        await save_log_to_db(f"Vehicle health fetched, mileage: {health.mileage_in_km}")
-        my_logger.debug("Mileage: %s", health.mileage_in_km)
+        await save_log_to_db(f"Vehicle health fetched, mileage: {mileage}")
+        my_logger.debug("Mileage: %s", mileage)
         info_data = await myskoda.get_info(vin)
         await save_log_to_db(f"Vehicle info fetched: {info_data}")
         my_logger.debug("Vehicle info fetched.")
@@ -588,6 +600,28 @@ async def get_skoda_update(vin: str) -> None:
             # Do not mark unhealthy for positions-only issues; continue gracefully
             my_logger.warning("Fetching vehicle positions failed: %s", e)
             await save_log_to_db(f"Fetching vehicle positions failed: {e}")
+
+        # Capture a concise snapshot with the two key values requested by users:
+        # mileage and current charging details.
+        if hasattr(myskoda, "get_charging"):
+            try:
+                charging = await myskoda.get_charging(vin)
+                snapshot_message = (
+                    "Vehicle snapshot fetched: "
+                    f"mileage_km={mileage}, "
+                    f"soc={getattr(charging, 'soc', None)}, "
+                    "charging_status="
+                    f"{_display_value(getattr(charging, 'charging_status', None))}, "
+                    "plug_status="
+                    f"{_display_value(getattr(charging, 'plug_status', None))}, "
+                    "charging_state="
+                    f"{_display_value(getattr(charging, 'state', None))}"
+                )
+                my_logger.info(snapshot_message)
+                await save_log_to_db(snapshot_message)
+            except Exception as e:  # noqa: BLE001
+                my_logger.warning("Fetching charging snapshot failed: %s", e)
+                await save_log_to_db(f"Fetching charging snapshot failed: {e}")
     except Exception as e:  # noqa: BLE001
         _mark_unhealthy(f"get_skoda_update failed: {e}", e)
         raise
@@ -850,6 +884,8 @@ async def skodarunner() -> None:
                                     )
 
                             if (
+                                not FORCE_POLLING_FALLBACK
+                                and
                                 myskoda.mqtt is not None
                                 and now_ts - last_mqtt_recovery_attempt_ts
                                 >= MQTT_RECOVERY_ATTEMPT_INTERVAL_SECONDS

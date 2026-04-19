@@ -135,6 +135,56 @@ async def test_get_skoda_update_handles_positions_exception_gracefully():
 
 
 @pytest.mark.asyncio
+async def test_get_skoda_update_logs_mileage_and_charging_snapshot():
+    m = import_with_stubs()
+
+    class FakeEnum:
+        def __init__(self, name):
+            self.name = name
+
+    class FakeCharging:
+        soc = 57
+        charging_status = FakeEnum("CHARGING")
+        plug_status = FakeEnum("CONNECTED")
+        state = FakeEnum("READY_FOR_CHARGING")
+
+    class FakeSkoda:
+        async def get_health(self, vin):
+            class H:
+                mileage_in_km = 45678
+
+            return H()
+
+        async def get_info(self, vin):
+            return {"i": 1}
+
+        async def get_status(self, vin):
+            return {"s": 1}
+
+        async def get_positions(self, vin):
+            class R:
+                positions = []
+
+            return R()
+
+        async def get_charging(self, vin):
+            return FakeCharging()
+
+    m.myskoda = FakeSkoda()
+    save_log = AsyncMock()
+    with patch("skodaimporter.chargeimporter.save_log_to_db", new=save_log):
+        await m.get_skoda_update("VIN")
+
+    messages = [call.args[0] for call in save_log.await_args_list if call.args]
+    assert any(
+        "Vehicle snapshot fetched: mileage_km=45678, soc=57" in msg
+        and "charging_status=CHARGING" in msg
+        and "plug_status=CONNECTED" in msg
+        for msg in messages
+    )
+
+
+@pytest.mark.asyncio
 async def test_on_event_triggers_on_change_access_service_event():
     m = import_with_stubs()
 
