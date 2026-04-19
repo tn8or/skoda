@@ -1458,20 +1458,10 @@ async def skodarunner() -> None:
                                 last_mqtt_recovery_attempt_ts = now_ts
                                 try:
                                     await myskoda.mqtt.connect(user.id, vins)
-                                    myskoda.subscribe_events(on_event)
-                                    _polling_fallback_active = False
-                                    _degraded_reason = None
-                                    _startup_status = "ready"
-                                    my_logger.info(
-                                        "MQTT recovery succeeded, disabling polling fallback"
-                                    )
-                                    await save_log_to_db(
-                                        "MQTT recovery succeeded, polling fallback disabled"
-                                    )
-                                    # Poll once immediately after MQTT recovery so
-                                    # last_event_received is fresh and we don't wait
-                                    # up to 4h for the event_timeout_check to fail
-                                    # in case the broker reconnects but sends no events.
+                                    # Poll once before re-subscribing so that
+                                    # last_event_received is fresh before any
+                                    # incoming MQTT event could also trigger
+                                    # get_skoda_update concurrently.
                                     if VIN:
                                         try:
                                             await get_skoda_update(VIN)
@@ -1485,6 +1475,16 @@ async def skodarunner() -> None:
                                                 "Post-MQTT-recovery poll failed: %s",
                                                 post_poll_err,
                                             )
+                                    myskoda.subscribe_events(on_event)
+                                    _polling_fallback_active = False
+                                    _degraded_reason = None
+                                    _startup_status = "ready"
+                                    my_logger.info(
+                                        "MQTT recovery succeeded, disabling polling fallback"
+                                    )
+                                    await save_log_to_db(
+                                        "MQTT recovery succeeded, polling fallback disabled"
+                                    )
                                 except Exception as recover_err:  # noqa: BLE001
                                     my_logger.warning(
                                         "MQTT recovery attempt failed: %s", recover_err
