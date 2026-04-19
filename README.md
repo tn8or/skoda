@@ -23,12 +23,14 @@ A small, experimental project that subscribes to the MySkoda service and forward
 ## Quick Start
 
 ### 1) Clone the repo
+
 ```bash
 git clone https://github.com/tn8or/skoda.git
 cd skoda
 ```
 
 ### 2) Create and activate a virtual environment
+
 ```bash
 python -m venv .venv
 # macOS/Linux:
@@ -38,11 +40,13 @@ source .venv/bin/activate
 ```
 
 ### 3) Install dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
 
 ### 4) Configure environment
+
 Create a `.env` file in the project root (or export these variables however you prefer):
 
 ```bash
@@ -58,29 +62,35 @@ Make sure your Graylog server is running and reachable from where this app runs.
 ### 5) Run the app
 
 - If the app uses Uvicorn (FastAPI), try:
+
 ```bash
 uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
 - Or simply:
+
 ```bash
 python main.py
 ```
 
 Then open:
+
 ```
 GET http://localhost:8000/
 ```
+
 Service logs are emitted to stdout/stderr. Use container logs to inspect runtime output.
 
 ## Docker
 
 Build:
+
 ```bash
 docker build -t skoda-data-logger .
 ```
 
 Run:
+
 ```bash
 docker run -d \
   -p 8000:8000 \
@@ -129,12 +139,14 @@ Tip: View logs with `docker logs <container-name>`.
     - HTTP 503 response if vehicle logs are missing or threshold exceeded
 
 Future improvement ideas:
+
 - Optional query parameter like `?lines=100` to control the amount of log lines returned.
 - Dashboard metrics and historical charts.
 
 ## CI/CD
 
 The `ci-cd.yml` workflow provides a complete CI/CD pipeline that:
+
 - Runs tests for all services with Python 3.13
 - Performs security scanning with pip-audit
 - Builds and pushes Docker images to GitHub Container Registry (GHCR)
@@ -160,6 +172,7 @@ MIT — see [LICENSE](LICENSE).
 ## GitHub Actions
 
 The repository includes the following GitHub Actions workflows:
+
 - **CI/CD Pipeline** (`ci-cd.yml`): Combined workflow that handles:
   - Testing all services with Python 3.13 in `python:3.13-slim` containers
   - Security scanning with pip-audit
