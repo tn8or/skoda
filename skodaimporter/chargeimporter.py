@@ -600,14 +600,8 @@ async def _resolve_vins_for_subscriptions() -> list[str]:
         if myskoda.mqtt is not None:
             await myskoda.mqtt.disconnect()
             await myskoda.mqtt.connect(user.id, [fallback_vin])
-            my_logger.info(
-                "MQTT reconnected with fallback VIN subscription: %s",
-                _mask_vin(fallback_vin),
-            )
-            await save_log_to_db(
-                "MQTT reconnected with fallback VIN subscription: "
-                f"{_mask_vin(fallback_vin)}"
-            )
+            my_logger.info("MQTT reconnected with fallback VIN subscription")
+            await save_log_to_db("MQTT reconnected with fallback VIN subscription")
     except Exception as e:  # noqa: BLE001
         my_logger.warning("Failed to rebind MQTT using fallback VIN: %s", e)
         await save_log_to_db(f"Failed to rebind MQTT using fallback VIN: {e}")
