@@ -69,6 +69,56 @@ MQTT_RECOVERY_ATTEMPT_INTERVAL_SECONDS = 10 * 60
 MQTT_ERROR_STALE_SECONDS = 120
 
 
+def _read_int_env(name: str, default: int) -> int:
+    """Read a positive integer from environment variables with fallback."""
+    raw = load_secret(name)
+    if not raw:
+        return default
+    try:
+        parsed = int(raw)
+        if parsed <= 0:
+            raise ValueError("must be > 0")
+        return parsed
+    except (TypeError, ValueError):
+        my_logger.warning(
+            "Invalid %s value '%s', using default %s",
+            name,
+            raw,
+            default,
+        )
+        return default
+
+
+def _read_bool_env(name: str, default: bool = False) -> bool:
+    """Read a boolean environment/secrets value with safe defaults."""
+    raw = load_secret(name)
+    if raw is None:
+        return default
+    normalized = raw.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    my_logger.warning(
+        "Invalid %s value '%s', using default %s",
+        name,
+        raw,
+        default,
+    )
+    return default
+
+
+POLLING_FALLBACK_INTERVAL_SECONDS = _read_int_env(
+    "SKODA_POLLING_FALLBACK_INTERVAL_SECONDS",
+    POLLING_FALLBACK_INTERVAL_SECONDS,
+)
+MQTT_RECOVERY_ATTEMPT_INTERVAL_SECONDS = _read_int_env(
+    "SKODA_MQTT_RECOVERY_ATTEMPT_INTERVAL_SECONDS",
+    MQTT_RECOVERY_ATTEMPT_INTERVAL_SECONDS,
+)
+FORCE_POLLING_FALLBACK = _read_bool_env("SKODA_FORCE_POLLING_FALLBACK", False)
+
+
 class _MyskodaMqttLogHandler(logging.Handler):
     """Capture MQTT client failures emitted by myskoda for health diagnostics."""
 
@@ -710,12 +760,22 @@ async def skodarunner() -> None:
                     await get_skoda_update(VIN)
                 last_event_received = time.time()
                 if vins:
-                    my_logger.debug("Vehicle VIN available for account (index 0 selected)")
+                    my_logger.debug(
+                        "Vehicle VIN available for account (index 0 selected)"
+                    )
                     my_logger.debug("Processing vehicle VIN for update")
+                else:
                     my_logger.warning("No vehicle VINs found for account")
 
                 mqtt_ready = False
-                if myskoda.mqtt is not None:
+                if FORCE_POLLING_FALLBACK:
+                    my_logger.warning(
+                        "SKODA_FORCE_POLLING_FALLBACK enabled; skipping MQTT connect"
+                    )
+                    await save_log_to_db(
+                        "SKODA_FORCE_POLLING_FALLBACK enabled; skipping MQTT connect"
+                    )
+                elif myskoda.mqtt is not None:
                     try:
                         await asyncio.wait_for(
                             myskoda.mqtt.connect(user.id, vins),

@@ -260,6 +260,18 @@ async def test_check_api_health_success():
         assert result is True
 
 
+def test_read_int_env_parses_valid_value(monkeypatch):
+    m = import_with_stubs()
+    monkeypatch.setenv("SKODA_POLLING_FALLBACK_INTERVAL_SECONDS", "30")
+    assert m._read_int_env("SKODA_POLLING_FALLBACK_INTERVAL_SECONDS", 300) == 30
+
+
+def test_read_int_env_falls_back_for_invalid_value(monkeypatch):
+    m = import_with_stubs()
+    monkeypatch.setenv("SKODA_POLLING_FALLBACK_INTERVAL_SECONDS", "invalid")
+    assert m._read_int_env("SKODA_POLLING_FALLBACK_INTERVAL_SECONDS", 300) == 300
+
+
 @pytest.mark.asyncio
 async def test_check_api_health_failure():
     """Test API health check failure."""

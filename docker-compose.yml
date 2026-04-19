@@ -4,13 +4,18 @@ services:
       context: ./skodaimporter
       dockerfile: Dockerfile
     container_name: skodaimporter
-    entrypoint: uvicorn chargeimporter:app --host 0.0.0.0 --port 80 --reload --reload-exclude *tmp
+    entrypoint: uvicorn chargeimporter:app --host 0.0.0.0 --port 80
+    # --reload --reload-exclude *tmp
     restart: always
 
     depends_on:
       - mariadb
     ports:
       - 80:80
+    environment:
+      SKODA_FORCE_POLLING_FALLBACK: "true"
+      SKODA_POLLING_FALLBACK_INTERVAL_SECONDS: "30"
+      SKODA_MQTT_RECOVERY_ATTEMPT_INTERVAL_SECONDS: "60"
     networks:
       - mariadb_network
     volumes:
