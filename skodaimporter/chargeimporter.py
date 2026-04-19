@@ -2,6 +2,7 @@ import asyncio
 import importlib
 import json
 import logging
+import re
 import time
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Optional
@@ -177,6 +178,95 @@ def _normalize_measurement_value(value: Any) -> Optional[Any]:
     return value
 
 
+def _normalize_key_name(name: str) -> str:
+    """Normalize field names for candidate matching across payload variants."""
+    return "".join(ch for ch in name.lower() if ch.isalnum())
+
+
+def _find_value_in_nested_payload(
+    payload: Any,
+    candidates: tuple[str, ...],
+    *,
+    max_depth: int = 6,
+) -> Any:
+    """Find first non-null candidate value in nested dict/object/list payloads."""
+    normalized_candidates = {_normalize_key_name(candidate) for candidate in candidates}
+    visited: set[int] = set()
+
+    def _walk(node: Any, depth: int) -> Any:
+        if depth < 0 or node is None:
+            return None
+
+        node_id = id(node)
+        if node_id in visited:
+            return None
+        visited.add(node_id)
+
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if _normalize_key_name(str(key)) in normalized_candidates:
+                    normalized = _normalize_measurement_value(value)
+                    if normalized is not None:
+                        return normalized
+            for value in node.values():
+                found = _walk(value, depth - 1)
+                if found is not None:
+                    return found
+            return None
+
+        if isinstance(node, (list, tuple, set)):
+            for item in node:
+                found = _walk(item, depth - 1)
+                if found is not None:
+                    return found
+            return None
+
+        if hasattr(node, "model_dump"):
+            try:
+                dumped = node.model_dump()
+                found = _walk(dumped, depth - 1)
+                if found is not None:
+                    return found
+            except Exception:  # noqa: BLE001
+                pass
+
+        if hasattr(node, "dict"):
+            try:
+                dumped = node.dict()
+                found = _walk(dumped, depth - 1)
+                if found is not None:
+                    return found
+            except Exception:  # noqa: BLE001
+                pass
+
+        node_dict = getattr(node, "__dict__", None)
+        if isinstance(node_dict, dict):
+            found = _walk(node_dict, depth - 1)
+            if found is not None:
+                return found
+
+        return None
+
+    return _walk(payload, max_depth)
+
+
+def _extract_number_from_text(payload: Any, patterns: tuple[str, ...]) -> Optional[Any]:
+    """Parse numeric measurements from payload string representation."""
+    text = str(payload)
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if not match:
+            continue
+        raw = match.group(1)
+        try:
+            if "." in raw:
+                return float(raw)
+            return int(raw)
+        except ValueError:
+            continue
+    return None
+
+
 def _resolve_soc_and_range(
     charging: Any,
     info_data: Any,
@@ -217,6 +307,54 @@ def _resolve_soc_and_range(
                 ("soc", "state_of_charge", "battery_level", "battery_percentage"),
             )
         )
+    if soc_value is None:
+        soc_value = _normalize_measurement_value(
+            _find_value_in_nested_payload(
+                charging,
+                ("soc", "state_of_charge", "battery_level", "battery_percentage"),
+            )
+        )
+    if soc_value is None:
+        soc_value = _normalize_measurement_value(
+            _find_value_in_nested_payload(
+                info_data,
+                ("soc", "state_of_charge", "battery_level", "battery_percentage"),
+            )
+        )
+    if soc_value is None:
+        soc_value = _normalize_measurement_value(
+            _find_value_in_nested_payload(
+                health,
+                ("soc", "state_of_charge", "battery_level", "battery_percentage"),
+            )
+        )
+    if soc_value is None:
+        soc_value = _normalize_measurement_value(
+            _find_value_in_nested_payload(
+                status,
+                ("soc", "state_of_charge", "battery_level", "battery_percentage"),
+            )
+        )
+    if soc_value is None:
+        soc_value = _normalize_measurement_value(
+            _extract_number_from_text(
+                charging,
+                (
+                    r"soc\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
+                    r"state[_\s]?of[_\s]?charge\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
+                ),
+            )
+        )
+    if soc_value is None:
+        soc_value = _normalize_measurement_value(
+            _extract_number_from_text(
+                info_data,
+                (
+                    r"soc\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
+                    r"state[_\s]?of[_\s]?charge\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
+                ),
+            )
+        )
 
     charged_range_value = _normalize_measurement_value(_extract_charged_range(charging))
     if charged_range_value is None:
@@ -242,6 +380,65 @@ def _resolve_soc_and_range(
                     "remaining_range_km",
                     "remaining_cruising_range_in_km",
                     "remaining_cruising_range_in_m",
+                ),
+            )
+        )
+    if charged_range_value is None:
+        charged_range_value = _normalize_measurement_value(
+            _find_value_in_nested_payload(
+                charging,
+                (
+                    "charged_range",
+                    "range",
+                    "remaining_range_km",
+                    "remaining_cruising_range_in_km",
+                    "remaining_cruising_range_in_m",
+                ),
+            )
+        )
+    if charged_range_value is None:
+        charged_range_value = _normalize_measurement_value(
+            _find_value_in_nested_payload(
+                info_data,
+                (
+                    "charged_range",
+                    "range",
+                    "remaining_range_km",
+                    "remaining_cruising_range_in_km",
+                    "remaining_cruising_range_in_m",
+                ),
+            )
+        )
+    if charged_range_value is None:
+        charged_range_value = _normalize_measurement_value(
+            _find_value_in_nested_payload(
+                health,
+                (
+                    "charged_range",
+                    "range",
+                    "remaining_range_km",
+                    "remaining_cruising_range_in_km",
+                    "remaining_cruising_range_in_m",
+                ),
+            )
+        )
+    if charged_range_value is None:
+        charged_range_value = _normalize_measurement_value(
+            _extract_number_from_text(
+                charging,
+                (
+                    r"charged[_\s]?range\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
+                    r"remaining[_\s]?cruising[_\s]?range[_\s]?in[_\s]?km\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
+                ),
+            )
+        )
+    if charged_range_value is None:
+        charged_range_value = _normalize_measurement_value(
+            _extract_number_from_text(
+                info_data,
+                (
+                    r"charged[_\s]?range\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
+                    r"remaining[_\s]?cruising[_\s]?range[_\s]?in[_\s]?km\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)",
                 ),
             )
         )
