@@ -41,9 +41,15 @@ def load_frontend_with_legacy_schema_stub():
 
         def execute(self, query, *args, **kwargs):
             # Fail only on the first modern query that references start_range.
-            if "start_range" in query and "NULL AS start_range" not in query and not self._raised:
+            if (
+                "start_range" in query
+                and "NULL AS start_range" not in query
+                and not self._raised
+            ):
                 self._raised = True
-                raise UnknownColumnError("(1054, \"Unknown column 'start_range' in 'SELECT'\")")
+                raise UnknownColumnError(
+                    "(1054, \"Unknown column 'start_range' in 'SELECT'\")"
+                )
             return None
 
         def fetchall(self):
