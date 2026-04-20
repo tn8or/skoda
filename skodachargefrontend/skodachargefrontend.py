@@ -119,7 +119,40 @@ async def root(
         start_date,
         end_date,
     )
-    cur.execute(query, (start_date, end_date))
+
+    def _is_missing_start_range_error(exc: Exception) -> bool:
+        """Return True when the DB error indicates missing start_range."""
+        args = getattr(exc, "args", ())
+        if not args:
+            return False
+
+        errno = args[0]
+        if errno != 1054:
+            return False
+
+        details = " ".join(str(arg) for arg in args[1:])
+        return "start_range" in details
+
+    try:
+        cur.execute(query, (start_date, end_date))
+    except Exception as exc:
+        # Some existing databases still use an older charge_hours schema
+        # without start_range. Fall back to a compatible select that
+        # injects a NULL placeholder in the same column position.
+        if _is_missing_start_range_error(exc):
+            my_logger.warning(
+                "start_range missing in charge_hours schema; using legacy query"
+            )
+            legacy_query = (
+                "SELECT log_timestamp, start_at, stop_at, amount, price, charged_range, "
+                "NULL AS start_range, mileage, position, soc "
+                "FROM skoda.charge_hours "
+                "WHERE stop_at >= %s AND stop_at < %s "
+                "ORDER BY mileage, start_at, log_timestamp"
+            )
+            cur.execute(legacy_query, (start_date, end_date))
+        else:
+            raise
     rows = cur.fetchall() or []
 
     # Normalize to tuples of python types

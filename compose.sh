@@ -6,10 +6,11 @@ if [ $1 = "up" ]; then
 source .venv/bin/activate
 echo "Virtual environment activated"
 folders="skodaimporter skodachargefinder skodachargecollector skodaupdatechargeprices skodachargefrontend"
-for folder in ${folders}; do
-    cd ${folder} && pytest --maxfail=1 && pip install -q -r requirements.txt && cd ..
-done
 echo ${folders} | xargs -P 8 -t -n 1 -I {} sh -c 'pip-compile --upgrade --output-file={}/requirements.txt {}/requirements.in'
+echo ${folders} | xargs -P 1 -t -n 1 -I {} sh -c 'pip install -q -r {}/requirements.txt'
+for folder in ${folders}; do
+    cd ${folder} && pytest --maxfail=1 && cd ..
+done
 echo compiled requirements
 GIT_COMMIT=$(git rev-parse HEAD || true)
 GIT_TAG=$(git describe --tags --always --dirty || true)
