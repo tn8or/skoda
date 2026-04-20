@@ -68,7 +68,7 @@ propcache==0.4.1
     #   yarl
 pydantic==2.13.2
     # via fastapi
-pydantic-core==2.46.2
+pydantic-core==2.46.3
     # via pydantic
 pyjwt==2.12.1
     # via myskoda
