@@ -14,6 +14,8 @@ class UnknownColumnError(Exception):
 def load_frontend_with_legacy_schema_stub():
     here = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
+    prev_mariadb = sys.modules.get("mariadb")
+    prev_graypy = sys.modules.get("graypy")
     sys.modules.setdefault("mariadb", types.SimpleNamespace())
     sys.modules.setdefault("graypy", types.SimpleNamespace(GELFTCPHandler=object))
 
@@ -48,7 +50,7 @@ def load_frontend_with_legacy_schema_stub():
             ):
                 self._raised = True
                 raise UnknownColumnError(
-                    "(1054, \"Unknown column 'start_range' in 'SELECT'\")"
+                    1054, "Unknown column 'start_range' in 'SELECT'"
                 )
             return None
 
@@ -100,6 +102,14 @@ def load_frontend_with_legacy_schema_stub():
         spec.loader.exec_module(mod)
         return mod
     finally:
+        if prev_mariadb is not None:
+            sys.modules["mariadb"] = prev_mariadb
+        else:
+            sys.modules.pop("mariadb", None)
+        if prev_graypy is not None:
+            sys.modules["graypy"] = prev_graypy
+        else:
+            sys.modules.pop("graypy", None)
         if prev_commons is not None:
             sys.modules["commons"] = prev_commons
         else:
