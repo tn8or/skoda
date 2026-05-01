@@ -39,7 +39,7 @@ pydantic==2.13.3
     # via fastapi
 pydantic-core==2.46.3
     # via pydantic
-pymysql==1.1.2
+pymysql==1.1.3
     # via -r requirements.in
 starlette==1.0.0
     # via fastapi
