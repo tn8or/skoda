@@ -58,7 +58,7 @@ multidict==6.7.1
     #   yarl
 myskoda==2.9.1
     # via -r requirements.in
-orjson==3.11.8
+orjson==3.11.9
     # via mashumaro
 paho-mqtt==2.1.0
     # via aiomqtt
