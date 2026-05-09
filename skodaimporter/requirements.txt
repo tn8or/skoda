@@ -84,7 +84,7 @@ protobuf==7.34.1
     # via firebase-messaging
 pycparser==3.0
     # via cffi
-pydantic==2.13.3
+pydantic==2.13.4
     # via fastapi
 pydantic-core==2.46.3
     # via pydantic
