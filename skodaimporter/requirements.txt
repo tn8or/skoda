@@ -64,7 +64,7 @@ idna==3.13
     #   anyio
     #   httpx
     #   yarl
-mashumaro[orjson]==3.20
+mashumaro[orjson]==3.21
     # via myskoda
 multidict==6.7.1
     # via
