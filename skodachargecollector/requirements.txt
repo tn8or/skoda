@@ -55,5 +55,5 @@ typing-inspection==0.4.2
     #   pydantic
 uvicorn==0.46.0
     # via -r skodachargecollector/requirements.in
-watchfiles==1.1.1
+watchfiles==1.2.0
     # via -r skodachargecollector/requirements.in
