@@ -90,7 +90,7 @@ pydantic-core==2.46.4
     # via pydantic
 pyjwt==2.12.1
     # via myskoda
-pymysql==1.1.3
+pymysql==1.2.0
     # via -r skodaimporter/requirements.in
 pyyaml==6.0.3
     # via myskoda
