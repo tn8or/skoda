@@ -80,7 +80,7 @@ propcache==0.5.2
     # via
     #   aiohttp
     #   yarl
-protobuf==7.34.1
+protobuf==7.35.1
     # via firebase-messaging
 pycparser==3.0
     # via cffi
