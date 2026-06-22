@@ -37,7 +37,7 @@ jobs:
           - skodaimporter
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -101,7 +101,7 @@ jobs:
     runs-on: skoda
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Verify dev schema copy is in sync
         run: |
@@ -133,7 +133,7 @@ jobs:
       skodachargefrontend: ${{ steps.filter.outputs.skodachargefrontend }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch
@@ -206,7 +206,7 @@ jobs:
 
       - name: Checkout repository
         if: steps.service_changed.outputs.changed == 'true'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -335,7 +335,7 @@ jobs:
 
       - name: Checkout repository
         if: steps.service_changed.outputs.changed == 'true'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
