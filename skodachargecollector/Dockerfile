@@ -1,5 +1,5 @@
 # Use Google Container Registry mirror to avoid Docker Hub rate limits
-FROM mirror.gcr.io/library/python:3.13-alpine AS build
+FROM mirror.gcr.io/library/python:3.14-alpine AS build
 
 WORKDIR /app
 ARG TARGETPLATFORM
@@ -64,7 +64,7 @@ RUN echo "Running tests with coverage requirements..." && \
 RUN echo "=== ALL TESTS PASSED SUCCESSFULLY ==="
 
 # Final production stage - only built if tests pass
-FROM mirror.gcr.io/library/python:3.13-alpine AS final
+FROM mirror.gcr.io/library/python:3.14-alpine AS final
 
 # Set up runtime environment
 ENV VIRTUAL_ENV=/opt/venv

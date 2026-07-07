@@ -1,5 +1,5 @@
 # Use Google Container Registry mirror to avoid Docker Hub rate limits
-FROM mirror.gcr.io/library/python:3.13-alpine AS build
+FROM mirror.gcr.io/library/python:3.14-alpine AS build
 
 WORKDIR /app
 ARG TARGETPLATFORM
@@ -17,7 +17,7 @@ COPY ./requirements.txt /tmp
 
 RUN . /opt/venv/bin/activate && pip install --no-cache-dir --upgrade -r /tmp/requirements.txt
 
-FROM mirror.gcr.io/library/python:3.13-alpine AS final
+FROM mirror.gcr.io/library/python:3.14-alpine AS final
 
 ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
