@@ -53,7 +53,7 @@ typing-inspection==0.4.2
     # via
     #   fastapi
     #   pydantic
-uvicorn==0.50.2
+uvicorn==0.51.0
     # via -r skodachargefinder/requirements.in
 watchfiles==1.2.0
     # via -r skodachargefinder/requirements.in
