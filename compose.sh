@@ -6,7 +6,7 @@ if [ $1 = "up" ]; then
 source .venv/bin/activate
 echo "Virtual environment activated"
 folders="skodaimporter skodachargefinder skodachargecollector skodaupdatechargeprices skodachargefrontend"
-echo ${folders} | xargs -P 8 -t -n 1 -I {} sh -c 'pip-compile --upgrade --output-file={}/requirements.txt {}/requirements.in'
+echo ${folders} | xargs -P 8 -t -n 1 -I {} sh -c 'cd "{}" && pip-compile --upgrade --no-emit-index-url --no-emit-trusted-host --output-file=requirements.txt requirements.in'
 echo ${folders} | xargs -P 1 -t -n 1 -I {} sh -c 'pip install -q -r {}/requirements.txt'
 for folder in ${folders}; do
     cd ${folder} && pytest --maxfail=1 && cd ..
