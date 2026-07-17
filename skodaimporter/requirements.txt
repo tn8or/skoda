@@ -39,7 +39,7 @@ cryptography==49.0.0
     # via
     #   firebase-messaging
     #   http-ece
-fastapi==0.139.1
+fastapi==0.139.2
     # via -r requirements.in
 firebase-messaging==0.4.5
     # via myskoda
