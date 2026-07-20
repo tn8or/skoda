@@ -111,5 +111,5 @@ uvicorn==0.51.0
     # via -r requirements.in
 watchfiles==1.2.0
     # via -r requirements.in
-yarl==1.24.2
+yarl==1.24.5
     # via aiohttp
