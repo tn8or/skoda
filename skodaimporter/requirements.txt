@@ -27,7 +27,7 @@ anyio==4.14.2
     #   watchfiles
 attrs==26.1.0
     # via aiohttp
-certifi==2026.6.17
+certifi==2026.7.22
     # via
     #   httpcore
     #   httpx
