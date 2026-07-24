@@ -37,7 +37,7 @@ idna==3.18
     #   httpx
 pydantic==2.13.4
     # via fastapi
-pydantic-core==2.46.4
+pydantic-core==2.47.0
     # via pydantic
 pymysql==1.2.0
     # via -r requirements.in

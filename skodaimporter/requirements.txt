@@ -86,7 +86,7 @@ pycparser==3.0
     # via cffi
 pydantic==2.13.4
     # via fastapi
-pydantic-core==2.46.4
+pydantic-core==2.47.0
     # via pydantic
 pyjwt==2.13.0
     # via myskoda
