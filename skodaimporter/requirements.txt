@@ -53,7 +53,7 @@ h11==0.16.0
     # via
     #   httpcore
     #   uvicorn
-http-ece==1.1.0
+http-ece==1.2.1
     # via firebase-messaging
 httpcore==1.0.9
     # via httpx
