@@ -16,7 +16,7 @@ aiomqtt==2.5.1
     # via myskoda
 aiosignal==1.4.0
     # via aiohttp
-annotated-doc==0.0.4
+annotated-doc==0.0.5
     # via fastapi
 annotated-types==0.8.0
     # via pydantic
