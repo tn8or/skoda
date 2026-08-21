@@ -70,7 +70,7 @@ multidict==6.7.1
     # via
     #   aiohttp
     #   yarl
-myskoda==2.16.1
+myskoda==2.17.0
     # via -r requirements.in
 orjson==3.12.0
     # via mashumaro
